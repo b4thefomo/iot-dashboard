@@ -4,6 +4,7 @@ import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/s
 import { CommandSidebar } from "@/components/command-sidebar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { UnifiedChat } from "@/components/unified-chat";
+import { FirmwareStatus } from "@/components/firmware-status";
 import { useUnifiedData } from "@/hooks/use-unified-data";
 import { Separator } from "@/components/ui/separator";
 import { Thermometer, Gauge, Car, Activity } from "lucide-react";
@@ -113,8 +114,15 @@ export default function CommandCenter() {
             </Card>
           </div>
 
-          {/* Unified Chat */}
-          <UnifiedChat />
+          {/* Firmware Status and Unified Chat */}
+          <div className="grid gap-6 md:grid-cols-3">
+            <div className="md:col-span-2">
+              <UnifiedChat />
+            </div>
+            <div>
+              <FirmwareStatus />
+            </div>
+          </div>
         </main>
       </SidebarInset>
     </SidebarProvider>

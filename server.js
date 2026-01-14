@@ -3,7 +3,11 @@ const express = require('express');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const multer = require('multer');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+
+// Configure multer for firmware uploads (store in memory)
+const upload = multer({ storage: multer.memoryStorage() });
 
 const app = express();
 const httpServer = createServer(app);
@@ -25,6 +29,11 @@ const MAX_HISTORY = 100;
 const sensorHistory = [];      // Weather station data
 const carHistory = [];         // Car telemetry data
 const masterHistory = [];      // Combined timeline for unified chat
+
+// Firmware storage for OTA updates
+const firmwareStore = {
+    // device_type: { version, buffer, uploadedAt, size }
+};
 
 let lastSensorDataReceived = null;
 let lastCarDataReceived = null;
@@ -356,6 +365,108 @@ app.get('/api/unified/history', (req, res) => {
         car: carHistory,
         timeline: masterHistory.slice(-50)
     });
+});
+
+// ==================== FIRMWARE OTA ENDPOINTS ====================
+
+// Upload firmware (called by GitHub Actions)
+app.post('/api/firmware/upload', upload.single('firmware'), (req, res) => {
+    // Verify auth token
+    const authHeader = req.headers.authorization;
+    const expectedToken = process.env.FIRMWARE_UPLOAD_TOKEN;
+
+    if (!expectedToken) {
+        return res.status(500).json({ error: "Server not configured for firmware uploads" });
+    }
+
+    if (!authHeader || authHeader !== `Bearer ${expectedToken}`) {
+        return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const { device_type, version } = req.body;
+    const firmware = req.file;
+
+    if (!device_type || !version || !firmware) {
+        return res.status(400).json({ error: "Missing device_type, version, or firmware file" });
+    }
+
+    // Store firmware in memory
+    firmwareStore[device_type] = {
+        version,
+        buffer: firmware.buffer,
+        uploadedAt: new Date().toISOString(),
+        size: firmware.size
+    };
+
+    console.log(`✅ Firmware uploaded: ${device_type} v${version} (${firmware.size} bytes)`);
+    io.emit('firmwareUpdate', { device_type, version, uploadedAt: firmwareStore[device_type].uploadedAt });
+
+    res.json({
+        success: true,
+        message: `Firmware ${device_type} v${version} uploaded successfully`,
+        size: firmware.size
+    });
+});
+
+// Check for firmware updates (called by ESP32)
+app.get('/api/firmware/:device_type/check', (req, res) => {
+    const { device_type } = req.params;
+    const { current_version } = req.query;
+
+    const firmware = firmwareStore[device_type];
+
+    if (!firmware) {
+        return res.json({
+            update_available: false,
+            message: "No firmware available for this device type"
+        });
+    }
+
+    const updateAvailable = current_version !== firmware.version;
+
+    res.json({
+        update_available: updateAvailable,
+        current_version: current_version || "unknown",
+        latest_version: firmware.version,
+        size: firmware.size,
+        uploaded_at: firmware.uploadedAt
+    });
+});
+
+// Download firmware (called by ESP32 for OTA update)
+app.get('/api/firmware/:device_type/download', (req, res) => {
+    const { device_type } = req.params;
+    const firmware = firmwareStore[device_type];
+
+    if (!firmware) {
+        return res.status(404).json({ error: "No firmware available" });
+    }
+
+    console.log(`📥 Firmware download: ${device_type} v${firmware.version}`);
+
+    res.set({
+        'Content-Type': 'application/octet-stream',
+        'Content-Length': firmware.size,
+        'Content-Disposition': `attachment; filename="${device_type}.bin"`,
+        'X-Firmware-Version': firmware.version
+    });
+
+    res.send(firmware.buffer);
+});
+
+// Get firmware status (for dashboard)
+app.get('/api/firmware/status', (req, res) => {
+    const status = {};
+
+    for (const [deviceType, firmware] of Object.entries(firmwareStore)) {
+        status[deviceType] = {
+            version: firmware.version,
+            size: firmware.size,
+            uploadedAt: firmware.uploadedAt
+        };
+    }
+
+    res.json(status);
 });
 
 // ==================== WEBSOCKET ====================

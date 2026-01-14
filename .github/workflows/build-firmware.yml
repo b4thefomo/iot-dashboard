@@ -1,0 +1,41 @@
+name: Build ESP32 Firmware
+
+on:
+  push:
+    paths:
+      - 'firmware/**'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: Install ESP32 Core
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+
+      - name: Install required libraries
+        run: |
+          arduino-cli lib install "ArduinoJson"
+
+      - name: Compile Firmware
+        run: |
+          arduino-cli compile \
+            --fqbn esp32:esp32:esp32 \
+            --output-dir ./build \
+            ./firmware/iot_server/iot_server.ino
+
+      - name: Upload to Server
+        run: |
+          curl -X POST "${{ secrets.SERVER_URL }}/api/firmware/upload" \
+            -H "Authorization: Bearer ${{ secrets.FIRMWARE_TOKEN }}" \
+            -F "device_type=iot_server" \
+            -F "version=${{ github.sha }}" \
+            -F "firmware=@./build/iot_server.ino.bin"

@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Send, Bot, User, Loader2, Cpu } from "lucide-react";
 import { API_URL } from "@/lib/socket";
+import { Markdown } from "@/components/ui/markdown";
 
 interface Message {
   id: string;
@@ -90,7 +91,7 @@ export function UnifiedChat() {
   };
 
   return (
-    <Card className="flex flex-col h-[450px]">
+    <Card className="flex flex-col h-[350px] sm:h-[450px]">
       <CardHeader className="pb-3">
         <CardTitle className="text-lg flex items-center gap-2">
           <Cpu className="h-5 w-5" />
@@ -119,25 +120,29 @@ export function UnifiedChat() {
                 }`}
               >
                 {message.role === "assistant" && (
-                  <Avatar className="h-8 w-8">
+                  <Avatar className="h-6 w-6 sm:h-8 sm:w-8 shrink-0">
                     <AvatarFallback className="bg-primary text-primary-foreground">
-                      <Bot className="h-4 w-4" />
+                      <Bot className="h-3 w-3 sm:h-4 sm:w-4" />
                     </AvatarFallback>
                   </Avatar>
                 )}
                 <div
-                  className={`rounded-lg px-4 py-2 max-w-[80%] ${
+                  className={`rounded-lg px-3 py-1.5 sm:px-4 sm:py-2 max-w-[90%] sm:max-w-[80%] ${
                     message.role === "user"
                       ? "bg-primary text-primary-foreground"
                       : "bg-muted"
                   }`}
                 >
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  {message.role === "assistant" ? (
+                    <Markdown content={message.content} />
+                  ) : (
+                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  )}
                 </div>
                 {message.role === "user" && (
-                  <Avatar className="h-8 w-8">
+                  <Avatar className="h-6 w-6 sm:h-8 sm:w-8 shrink-0">
                     <AvatarFallback>
-                      <User className="h-4 w-4" />
+                      <User className="h-3 w-3 sm:h-4 sm:w-4" />
                     </AvatarFallback>
                   </Avatar>
                 )}
@@ -145,12 +150,12 @@ export function UnifiedChat() {
             ))}
             {isLoading && (
               <div className="flex gap-3 justify-start">
-                <Avatar className="h-8 w-8">
+                <Avatar className="h-6 w-6 sm:h-8 sm:w-8 shrink-0">
                   <AvatarFallback className="bg-primary text-primary-foreground">
-                    <Bot className="h-4 w-4" />
+                    <Bot className="h-3 w-3 sm:h-4 sm:w-4" />
                   </AvatarFallback>
                 </Avatar>
-                <div className="rounded-lg px-4 py-2 bg-muted">
+                <div className="rounded-lg px-3 py-1.5 sm:px-4 sm:py-2 bg-muted">
                   <Loader2 className="h-4 w-4 animate-spin" />
                 </div>
               </div>

@@ -52,9 +52,9 @@ export default function CommandCenter() {
           <Separator orientation="vertical" className="mr-2 h-4" />
           <h1 className="font-semibold">Command Center - All Systems</h1>
         </header>
-        <main className="flex-1 p-6 space-y-6">
+        <main className="flex-1 p-4 sm:p-6 space-y-4 sm:space-y-6">
           {/* Two-column layout for sensor panels */}
-          <div className="grid gap-6 md:grid-cols-2">
+          <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2">
             {/* Weather Station Panel */}
             <Card>
               <CardHeader className="pb-2">
@@ -115,8 +115,8 @@ export default function CommandCenter() {
           </div>
 
           {/* Firmware Status and Unified Chat */}
-          <div className="grid gap-6 md:grid-cols-3">
-            <div className="md:col-span-2">
+          <div className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-3">
+            <div className="lg:col-span-2">
               <UnifiedChat />
             </div>
             <div>

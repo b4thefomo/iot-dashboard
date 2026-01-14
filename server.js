@@ -47,8 +47,8 @@ let model = null;
 
 if (GEMINI_KEY) {
     genAI = new GoogleGenerativeAI(GEMINI_KEY);
-    model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-    console.log("✅ Gemini model initialized: gemini-2.0-flash");
+    model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+    console.log("✅ Gemini model initialized: gemini-3-flash-preview");
 } else {
     console.log("⚠️ Gemini not initialized - API key missing");
 }

@@ -1,10 +1,8 @@
 /*
  * IoT Server - ESP32 Firmware with OTA Updates
  *
- * This firmware sends sensor data to the server and supports
- * Over-The-Air (OTA) updates via the server's firmware endpoint.
- *
- * Supports both weather station and car telemetry modes.
+ * Sends car telemetry and weather data to server.
+ * Supports Over-The-Air (OTA) firmware updates.
  */
 
 #include <WiFi.h>
@@ -12,177 +10,165 @@
 #include <ESP32httpUpdate.h>
 #include <ArduinoJson.h>
 
-// ==================== CONFIGURATION ====================
+// ==========================================
+// CONFIGURATION
+// ==========================================
+const char* ssid     = "Starlink wide";
+const char* password = "oghouse25";
 
-// WiFi credentials
-const char* WIFI_SSID = "YOUR_WIFI_SSID";
-const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
-
-// Server configuration
-const char* SERVER_URL = "https://iot-dashboard-dij1.onrender.com";
+const char* serverUrl = "https://iot-dashboard-dij1.onrender.com/api/data";
+const char* SERVER_BASE = "https://iot-dashboard-dij1.onrender.com";
 const char* DEVICE_TYPE = "iot_server";
 
-// Firmware version - increment this when you push new code
+// ⚠️ INCREMENT THIS when you push new code!
 const char* FIRMWARE_VERSION = "1.0.0";
 
-// Device mode: "weather_station" or "car_telemetry"
-const char* SENSOR_TYPE = "weather_station";
+// --- TIMING CONFIGURATION ---
+const long CAR_INTERVAL = 500;          // Car updates every 0.5 seconds
+const long WEATHER_INTERVAL = 10000;    // Weather updates every 10 seconds
+const long OTA_CHECK_INTERVAL = 3600000; // Check for updates every hour
 
-// Device ID
-const char* DEVICE_ID = "ESP32_001";
-
-// Timing intervals (milliseconds)
-const unsigned long DATA_SEND_INTERVAL = 5000;      // Send data every 5 seconds
-const unsigned long OTA_CHECK_INTERVAL = 3600000;   // Check for updates every hour
-
-// ==================== GLOBALS ====================
-
-unsigned long lastDataSend = 0;
+// Timers
+unsigned long lastCarUpdate = 0;
+unsigned long lastWeatherUpdate = 0;
 unsigned long lastOtaCheck = 0;
 
-// ==================== SETUP ====================
+// Simulation Variables
+float carSpeed = 0;
+float carRPM = 800;
+float weatherTemp = 24.0;
+float weatherPressure = 1013.0;
+
+// Function Declarations
+void sendData(String jsonPayload);
+void checkForOTAUpdate();
+void performOTAUpdate();
 
 void setup() {
   Serial.begin(115200);
-  delay(1000);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
 
   Serial.println("\n========================================");
   Serial.println("IoT Server ESP32 Firmware");
   Serial.printf("Version: %s\n", FIRMWARE_VERSION);
-  Serial.printf("Device: %s\n", DEVICE_ID);
-  Serial.printf("Mode: %s\n", SENSOR_TYPE);
-  Serial.println("========================================\n");
+  Serial.println("========================================");
 
-  // Connect to WiFi
-  connectWiFi();
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\n✅ Connected! IP: " + WiFi.localIP().toString());
 
   // Check for OTA updates on boot
-  Serial.println("Checking for firmware updates...");
+  Serial.println("🔍 Checking for firmware updates...");
   checkForOTAUpdate();
 }
 
-// ==================== MAIN LOOP ====================
-
 void loop() {
-  unsigned long now = millis();
-
-  // Reconnect WiFi if needed
-  if (WiFi.status() != WL_CONNECTED) {
-    connectWiFi();
-  }
-
-  // Send sensor data at regular intervals
-  if (now - lastDataSend >= DATA_SEND_INTERVAL) {
-    sendSensorData();
-    lastDataSend = now;
-  }
-
-  // Check for OTA updates periodically
-  if (now - lastOtaCheck >= OTA_CHECK_INTERVAL) {
-    checkForOTAUpdate();
-    lastOtaCheck = now;
-  }
-
-  delay(100);
-}
-
-// ==================== WIFI ====================
-
-void connectWiFi() {
-  Serial.printf("Connecting to WiFi: %s", WIFI_SSID);
-
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 30) {
-    delay(500);
-    Serial.print(".");
-    attempts++;
-  }
-
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println(" Connected!");
-    Serial.printf("IP Address: %s\n", WiFi.localIP().toString().c_str());
+    unsigned long now = millis();
+
+    // ==================================================
+    // TASK 1: CAR TELEMETRY (Fast Update)
+    // ==================================================
+    if (now - lastCarUpdate >= CAR_INTERVAL) {
+      lastCarUpdate = now;
+
+      float throttle = random(0, 100);
+      if (throttle > 50) carSpeed += 2.5;
+      else carSpeed -= 1.5;
+
+      if (carSpeed < 0) carSpeed = 0;
+      if (carSpeed > 160) carSpeed = 160;
+
+      if (carSpeed == 0) carRPM = 800 + random(-20, 20);
+      else carRPM = 1500 + (carSpeed * 25) + random(-50, 50);
+
+      String json = "{";
+      json += "\"sensor_type\": \"car_telemetry\",";
+      json += "\"device_id\": \"OBD_UNIT_01\",";
+      json += "\"timestamp\": " + String(now) + ",";
+      json += "\"speed_kmh\": " + String(carSpeed) + ",";
+      json += "\"rpm\": " + String(carRPM) + ",";
+      json += "\"throttle_pos\": " + String(throttle) + ",";
+      json += "\"firmware_version\": \"" + String(FIRMWARE_VERSION) + "\"";
+      json += "}";
+
+      sendData(json);
+    }
+
+    // ==================================================
+    // TASK 2: WEATHER STATION (Slow Update)
+    // ==================================================
+    if (now - lastWeatherUpdate >= WEATHER_INTERVAL) {
+      lastWeatherUpdate = now;
+
+      weatherTemp += (random(-10, 10) / 10.0);
+      weatherPressure += (random(-20, 20) / 10.0);
+
+      String json = "{";
+      json += "\"sensor_type\": \"weather_station\",";
+      json += "\"device_id\": \"METEO_UNIT_01\",";
+      json += "\"timestamp\": " + String(now) + ",";
+      json += "\"temp_c\": " + String(weatherTemp) + ",";
+      json += "\"pressure_hpa\": " + String(weatherPressure) + ",";
+      json += "\"firmware_version\": \"" + String(FIRMWARE_VERSION) + "\"";
+      json += "}";
+
+      sendData(json);
+    }
+
+    // ==================================================
+    // TASK 3: OTA UPDATE CHECK (Every hour)
+    // ==================================================
+    if (now - lastOtaCheck >= OTA_CHECK_INTERVAL) {
+      lastOtaCheck = now;
+      checkForOTAUpdate();
+    }
+
   } else {
-    Serial.println(" Failed!");
-    Serial.println("Will retry in main loop...");
+    Serial.println("⚠️ WiFi Lost. Retrying...");
+    WiFi.reconnect();
+    delay(5000);
   }
 }
 
-// ==================== SENSOR DATA ====================
-
-void sendSensorData() {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi not connected, skipping data send");
-    return;
-  }
-
+// --- HELPER: SEND DATA ---
+void sendData(String jsonPayload) {
   HTTPClient http;
-  String url = String(SERVER_URL) + "/api/data";
-
-  http.begin(url);
+  http.begin(serverUrl);
   http.addHeader("Content-Type", "application/json");
 
-  // Create JSON payload based on sensor type
-  JsonDocument doc;
-  doc["sensor_type"] = SENSOR_TYPE;
-  doc["device_id"] = DEVICE_ID;
-  doc["timestamp"] = millis();
-  doc["firmware_version"] = FIRMWARE_VERSION;
+  int responseCode = http.POST(jsonPayload);
 
-  if (strcmp(SENSOR_TYPE, "weather_station") == 0) {
-    // Weather station data
-    // TODO: Replace with actual sensor readings
-    doc["temp_c"] = readTemperature();
-    doc["pressure_hpa"] = readPressure();
-  } else if (strcmp(SENSOR_TYPE, "car_telemetry") == 0) {
-    // Car telemetry data
-    // TODO: Replace with actual OBD readings
-    doc["speed_kmh"] = readSpeed();
-    doc["rpm"] = readRPM();
-    doc["throttle_pos"] = readThrottlePosition();
-    doc["coolant_temp_c"] = readCoolantTemp();
-  }
-
-  String payload;
-  serializeJson(doc, payload);
-
-  int httpCode = http.POST(payload);
-
-  if (httpCode > 0) {
-    if (httpCode == HTTP_CODE_OK) {
-      Serial.printf("Data sent successfully: %s\n", payload.c_str());
-    } else {
-      Serial.printf("HTTP error: %d\n", httpCode);
-    }
+  if (responseCode > 0) {
+    Serial.println("📡 Sent: " + jsonPayload);
   } else {
-    Serial.printf("Connection error: %s\n", http.errorToString(httpCode).c_str());
+    Serial.println("❌ Error sending data: " + String(responseCode));
   }
 
   http.end();
 }
 
-// ==================== OTA UPDATE ====================
-
+// --- OTA: CHECK FOR UPDATES ---
 void checkForOTAUpdate() {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi not connected, skipping OTA check");
-    return;
-  }
+  if (WiFi.status() != WL_CONNECTED) return;
 
   HTTPClient http;
-  String checkUrl = String(SERVER_URL) + "/api/firmware/" + DEVICE_TYPE + "/check?current_version=" + FIRMWARE_VERSION;
+  String checkUrl = String(SERVER_BASE) + "/api/firmware/" + DEVICE_TYPE + "/check?current_version=" + FIRMWARE_VERSION;
 
-  Serial.printf("Checking for updates at: %s\n", checkUrl.c_str());
+  Serial.println("🔍 Checking: " + checkUrl);
 
   http.begin(checkUrl);
   int httpCode = http.GET();
 
   if (httpCode == HTTP_CODE_OK) {
     String payload = http.getString();
-    Serial.printf("Update check response: %s\n", payload.c_str());
+    Serial.println("📦 Response: " + payload);
 
-    // Parse JSON response
+    // Parse JSON
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, payload);
 
@@ -191,88 +177,45 @@ void checkForOTAUpdate() {
       const char* latestVersion = doc["latest_version"] | "unknown";
 
       if (updateAvailable) {
-        Serial.printf("Update available! Current: %s, Latest: %s\n", FIRMWARE_VERSION, latestVersion);
+        Serial.printf("🆕 Update available! %s -> %s\n", FIRMWARE_VERSION, latestVersion);
         performOTAUpdate();
       } else {
-        Serial.println("Firmware is up to date");
+        Serial.println("✅ Firmware is up to date");
       }
-    } else {
-      Serial.printf("JSON parse error: %s\n", error.c_str());
     }
   } else {
-    Serial.printf("Update check failed: %d\n", httpCode);
+    Serial.printf("❌ Update check failed: %d\n", httpCode);
   }
 
   http.end();
 }
 
+// --- OTA: PERFORM UPDATE ---
 void performOTAUpdate() {
   Serial.println("\n========================================");
-  Serial.println("Starting OTA Update...");
-  Serial.println("DO NOT power off the device!");
+  Serial.println("🔄 Starting OTA Update...");
+  Serial.println("⚠️ DO NOT power off the device!");
   Serial.println("========================================\n");
 
-  String downloadUrl = String(SERVER_URL) + "/api/firmware/" + DEVICE_TYPE + "/download";
-
-  // Configure HTTP update
-  httpUpdate.setLedPin(LED_BUILTIN, LOW);  // LED on during update
+  String downloadUrl = String(SERVER_BASE) + "/api/firmware/" + DEVICE_TYPE + "/download";
 
   t_httpUpdate_return ret = httpUpdate.update(downloadUrl);
 
   switch (ret) {
     case HTTP_UPDATE_OK:
-      Serial.println("Update successful! Restarting...");
+      Serial.println("✅ Update successful! Restarting...");
       delay(1000);
       ESP.restart();
       break;
 
     case HTTP_UPDATE_FAILED:
-      Serial.printf("Update FAILED! Error (%d): %s\n",
+      Serial.printf("❌ Update FAILED! Error (%d): %s\n",
                     httpUpdate.getLastError(),
                     httpUpdate.getLastErrorString().c_str());
       break;
 
     case HTTP_UPDATE_NO_UPDATES:
-      Serial.println("No update available");
+      Serial.println("ℹ️ No update available");
       break;
   }
-}
-
-// ==================== SENSOR READINGS ====================
-// TODO: Replace these mock functions with actual sensor code
-
-float readTemperature() {
-  // Mock temperature reading
-  // Replace with actual sensor code (e.g., BME280, DHT22)
-  return 22.0 + random(-50, 50) / 10.0;
-}
-
-float readPressure() {
-  // Mock pressure reading
-  // Replace with actual sensor code
-  return 1013.0 + random(-50, 50) / 10.0;
-}
-
-float readSpeed() {
-  // Mock speed reading
-  // Replace with actual OBD-II reading
-  return random(0, 120);
-}
-
-int readRPM() {
-  // Mock RPM reading
-  // Replace with actual OBD-II reading
-  return random(800, 6000);
-}
-
-int readThrottlePosition() {
-  // Mock throttle position
-  // Replace with actual OBD-II reading
-  return random(0, 100);
-}
-
-float readCoolantTemp() {
-  // Mock coolant temperature
-  // Replace with actual OBD-II reading
-  return 85.0 + random(-10, 20);
 }

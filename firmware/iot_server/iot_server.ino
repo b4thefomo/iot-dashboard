@@ -139,8 +139,11 @@ void loop() {
 
 // --- HELPER: SEND DATA ---
 void sendData(String jsonPayload) {
+  WiFiClientSecure client;
+  client.setInsecure(); // Skip certificate validation
+
   HTTPClient http;
-  http.begin(serverUrl);
+  http.begin(client, serverUrl);
   http.addHeader("Content-Type", "application/json");
 
   int responseCode = http.POST(jsonPayload);
@@ -158,12 +161,15 @@ void sendData(String jsonPayload) {
 void checkForOTAUpdate() {
   if (WiFi.status() != WL_CONNECTED) return;
 
+  WiFiClientSecure client;
+  client.setInsecure(); // Skip certificate validation
+
   HTTPClient http;
   String checkUrl = String(SERVER_BASE) + "/api/firmware/" + DEVICE_TYPE + "/check?current_version=" + FIRMWARE_VERSION;
 
   Serial.println("🔍 Checking: " + checkUrl);
 
-  http.begin(checkUrl);
+  http.begin(client, checkUrl);
   int httpCode = http.GET();
 
   if (httpCode == HTTP_CODE_OK) {

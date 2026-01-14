@@ -39,8 +39,19 @@ let lastSensorDataReceived = null;
 let lastCarDataReceived = null;
 
 // Initialize Gemini
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+const GEMINI_KEY = process.env.GEMINI_API_KEY;
+console.log("🔑 GEMINI_API_KEY:", GEMINI_KEY ? `Found (${GEMINI_KEY.slice(0, 8)}...${GEMINI_KEY.slice(-4)})` : "❌ NOT FOUND");
+
+let genAI = null;
+let model = null;
+
+if (GEMINI_KEY) {
+    genAI = new GoogleGenerativeAI(GEMINI_KEY);
+    model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    console.log("✅ Gemini model initialized: gemini-2.0-flash");
+} else {
+    console.log("⚠️ Gemini not initialized - API key missing");
+}
 
 // Middleware
 app.use(cors({ origin: CORS_ORIGINS }));
@@ -179,8 +190,14 @@ app.get('/api/history', (req, res) => {
 });
 
 app.post('/api/chat', async (req, res) => {
+    console.log("💬 Chat request received");
     const { message } = req.body;
     if (!message) return res.status(400).json({ error: "Message is required" });
+
+    if (!model) {
+        console.log("❌ Gemini model not initialized");
+        return res.status(500).json({ error: "AI not configured - missing API key" });
+    }
 
     try {
         const context = buildSensorContext();
@@ -193,12 +210,15 @@ User: ${message}
 
 Provide a helpful, concise response.`;
 
+        console.log("🤖 Calling Gemini API...");
         const result = await model.generateContent(prompt);
         const text = result.response.text();
+        console.log("✅ Gemini response received");
         res.json({ response: text });
     } catch (error) {
-        console.error("Gemini API error:", error);
-        res.status(500).json({ error: "Failed to generate response" });
+        console.error("❌ Gemini API error:", error.message);
+        console.error("Full error:", JSON.stringify(error, null, 2));
+        res.status(500).json({ error: "Failed to generate response: " + error.message });
     }
 });
 
@@ -467,6 +487,22 @@ app.get('/api/firmware/status', (req, res) => {
     }
 
     res.json(status);
+});
+
+// ==================== DEBUG ENDPOINT ====================
+
+app.get('/api/debug', (req, res) => {
+    res.json({
+        gemini: {
+            apiKeyPresent: !!GEMINI_KEY,
+            apiKeyPreview: GEMINI_KEY ? `${GEMINI_KEY.slice(0, 8)}...` : null,
+            modelInitialized: !!model
+        },
+        cors: CORS_ORIGINS,
+        firmware: {
+            uploadTokenPresent: !!process.env.FIRMWARE_UPLOAD_TOKEN
+        }
+    });
 });
 
 // ==================== WEBSOCKET ====================

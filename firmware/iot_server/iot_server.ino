@@ -2,12 +2,13 @@
  * IoT Server - ESP32 Firmware with OTA Updates
  *
  * Sends car telemetry and weather data to server.
- * Supports Over-The-Air (OTA) firmware updates.
+ * Supports Over-The-Air (OTA) firmware updates via HTTPS.
  */
 
 #include <WiFi.h>
 #include <HTTPClient.h>
-#include <ESP32httpUpdate.h>
+#include <HTTPUpdate.h>
+#include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 
 // ==========================================
@@ -16,6 +17,7 @@
 const char* ssid     = "Starlink wide";
 const char* password = "oghouse25";
 
+// Server Endpoints
 const char* serverUrl = "https://iot-dashboard-dij1.onrender.com/api/data";
 const char* SERVER_BASE = "https://iot-dashboard-dij1.onrender.com";
 const char* DEVICE_TYPE = "iot_server";
@@ -24,9 +26,9 @@ const char* DEVICE_TYPE = "iot_server";
 const char* FIRMWARE_VERSION = "1.0.0";
 
 // --- TIMING CONFIGURATION ---
-const long CAR_INTERVAL = 500;          // Car updates every 0.5 seconds
-const long WEATHER_INTERVAL = 10000;    // Weather updates every 10 seconds
-const long OTA_CHECK_INTERVAL = 3600000; // Check for updates every hour
+const long CAR_INTERVAL = 500;           // Car updates every 0.5 seconds
+const long WEATHER_INTERVAL = 10000;     // Weather updates every 10 seconds
+const long OTA_CHECK_INTERVAL = 3600000; // Check for updates every hour (1hr = 3600000ms)
 
 // Timers
 unsigned long lastCarUpdate = 0;
@@ -61,7 +63,7 @@ void setup() {
   }
   Serial.println("\n✅ Connected! IP: " + WiFi.localIP().toString());
 
-  // Check for OTA updates on boot
+  // Check for OTA updates immediately on boot
   Serial.println("🔍 Checking for firmware updates...");
   checkForOTAUpdate();
 }
@@ -121,7 +123,7 @@ void loop() {
     }
 
     // ==================================================
-    // TASK 3: OTA UPDATE CHECK (Every hour)
+    // TASK 3: OTA UPDATE CHECK (Every Hour)
     // ==================================================
     if (now - lastOtaCheck >= OTA_CHECK_INTERVAL) {
       lastOtaCheck = now;
@@ -168,7 +170,7 @@ void checkForOTAUpdate() {
     String payload = http.getString();
     Serial.println("📦 Response: " + payload);
 
-    // Parse JSON
+    // Parse JSON using ArduinoJson
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, payload);
 
@@ -182,6 +184,8 @@ void checkForOTAUpdate() {
       } else {
         Serial.println("✅ Firmware is up to date");
       }
+    } else {
+      Serial.println("❌ JSON Parsing Error");
     }
   } else {
     Serial.printf("❌ Update check failed: %d\n", httpCode);
@@ -199,7 +203,13 @@ void performOTAUpdate() {
 
   String downloadUrl = String(SERVER_BASE) + "/api/firmware/" + DEVICE_TYPE + "/download";
 
-  t_httpUpdate_return ret = httpUpdate.update(downloadUrl);
+  WiFiClientSecure client;
+  client.setInsecure(); // Skip certificate validation for simplicity
+
+  // Set LED pin if available (usually GPIO 2)
+  httpUpdate.setLedPin(2, HIGH);
+
+  t_httpUpdate_return ret = httpUpdate.update(client, downloadUrl);
 
   switch (ret) {
     case HTTP_UPDATE_OK:

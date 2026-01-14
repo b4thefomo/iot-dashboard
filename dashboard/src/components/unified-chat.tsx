@@ -91,7 +91,7 @@ export function UnifiedChat() {
   };
 
   return (
-    <Card className="flex flex-col h-[350px] sm:h-[450px]">
+    <Card className="flex flex-col h-[450px] sm:h-[400px] lg:h-[450px]">
       <CardHeader className="pb-3">
         <CardTitle className="text-lg flex items-center gap-2">
           <Cpu className="h-5 w-5" />

@@ -114,12 +114,12 @@ export default function CommandCenter() {
             </Card>
           </div>
 
-          {/* Firmware Status and Unified Chat */}
+          {/* Unified Chat (full width on mobile) and Firmware Status (hidden on mobile) */}
           <div className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-3">
             <div className="lg:col-span-2">
               <UnifiedChat />
             </div>
-            <div>
+            <div className="hidden lg:block">
               <FirmwareStatus />
             </div>
           </div>

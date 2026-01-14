@@ -28,7 +28,7 @@ const char* FIRMWARE_VERSION = "1.0.0";
 // --- TIMING CONFIGURATION ---
 const long CAR_INTERVAL = 500;           // Car updates every 0.5 seconds
 const long WEATHER_INTERVAL = 10000;     // Weather updates every 10 seconds
-const long OTA_CHECK_INTERVAL = 3600000; // Check for updates every hour (1hr = 3600000ms)
+const long OTA_CHECK_INTERVAL = 60000; // Check for updates every minute (for testing)
 
 // Timers
 unsigned long lastCarUpdate = 0;

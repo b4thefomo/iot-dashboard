@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Send, Bot, User, Loader2, Car } from "lucide-react";
+import { API_URL } from "@/lib/socket";
 
 interface Message {
   id: string;
@@ -46,7 +47,7 @@ export function CarChatInterface() {
     setIsLoading(true);
 
     try {
-      const response = await fetch("http://localhost:4000/api/car/chat", {
+      const response = await fetch(`${API_URL}/api/car/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

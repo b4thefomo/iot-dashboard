@@ -7,14 +7,18 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const app = express();
 const httpServer = createServer(app);
+
+const PORT = process.env.PORT || 4000;
+const CORS_ORIGINS = process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(',')
+    : ["http://localhost:4001", "http://localhost:3000"];
+
 const io = new Server(httpServer, {
     cors: {
-        origin: "http://localhost:4001",
+        origin: CORS_ORIGINS,
         methods: ["GET", "POST"]
     }
 });
-
-const PORT = 4000;
 const MAX_HISTORY = 100;
 
 // In-memory storage
@@ -30,7 +34,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
 // Middleware
-app.use(cors({ origin: "http://localhost:4001" }));
+app.use(cors({ origin: CORS_ORIGINS }));
 app.use(express.json());
 
 // Helper to add timestamp

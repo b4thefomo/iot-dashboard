@@ -30,6 +30,11 @@ const sensorHistory = [];      // Weather station data
 const carHistory = [];         // Car telemetry data
 const masterHistory = [];      // Combined timeline for unified chat
 
+// Subzero Fleet storage
+const freezerHistory = {};     // { device_id: [readings] } - Per-device telemetry
+const fleetStatus = {};        // { device_id: latestReading } - Latest per device
+let lastFleetDataReceived = null;
+
 // Firmware storage for OTA updates
 const firmwareStore = {
     // device_type: { version, buffer, uploadedAt, size }
@@ -124,6 +129,50 @@ app.post('/api/data', (req, res) => {
         lastSensorDataReceived = new Date();
         io.emit('sensorData', normalizedWeather);
         addToMasterHistory(normalizedWeather, 'weather');
+
+    } else if (sensorType === 'freezer') {
+        console.log("🧊 FREEZER:", data.device_id, data.temp_cabinet + "°C", data.fault);
+
+        // Normalize freezer data
+        const normalizedFreezer = {
+            device_id: data.device_id,
+            lat: data.lat,
+            lon: data.lon,
+            location_name: data.location_name,
+            temp_cabinet: data.temp_cabinet,
+            temp_ambient: data.temp_ambient,
+            door_open: data.door_open,
+            defrost_on: data.defrost_on,
+            compressor_power_w: data.compressor_power_w,
+            compressor_freq_hz: data.compressor_freq_hz,
+            frost_level: data.frost_level,
+            cop: data.cop,
+            fault: data.fault,
+            fault_id: data.fault_id,
+            timestamp: data.server_timestamp,
+            raw_timestamp: data.timestamp
+        };
+
+        // Initialize device history if new
+        if (!freezerHistory[data.device_id]) {
+            freezerHistory[data.device_id] = [];
+            console.log(`🆕 New freezer registered: ${data.device_id} (${data.location_name})`);
+        }
+
+        // Store reading in device history
+        freezerHistory[data.device_id].push(normalizedFreezer);
+        if (freezerHistory[data.device_id].length > MAX_HISTORY) {
+            freezerHistory[data.device_id].shift();
+        }
+
+        // Update fleet status (latest per device)
+        fleetStatus[data.device_id] = normalizedFreezer;
+        lastFleetDataReceived = new Date();
+
+        // Emit socket events
+        io.emit('freezerData', normalizedFreezer);
+        io.emit('fleetUpdate', fleetStatus);
+        addToMasterHistory(normalizedFreezer, 'freezer');
 
     } else {
         // Legacy support: route based on fields present
@@ -387,6 +436,168 @@ app.get('/api/unified/history', (req, res) => {
     });
 });
 
+// ==================== SUBZERO FLEET ENDPOINTS ====================
+
+function buildFleetContext() {
+    const devices = Object.values(fleetStatus);
+    if (devices.length === 0) {
+        return "No freezer fleet data has been received yet.";
+    }
+
+    // Categorize devices by status
+    const critical = devices.filter(d => d.fault !== 'NORMAL' || d.temp_cabinet > -5);
+    const warning = devices.filter(d => d.door_open || d.frost_level > 0.5);
+    const healthy = devices.filter(d => d.fault === 'NORMAL' && !d.door_open && d.temp_cabinet <= -10);
+
+    // Build device summaries
+    const deviceSummaries = devices.map(d => {
+        let status = '🟢 OK';
+        if (d.fault !== 'NORMAL' || d.temp_cabinet > -5) status = '🔴 CRITICAL';
+        else if (d.door_open || d.frost_level > 0.5) status = '🟡 WARNING';
+
+        return `${d.device_id} (${d.location_name}): ${d.temp_cabinet}°C, ${d.fault}${d.door_open ? ' [DOOR OPEN]' : ''} ${status}`;
+    }).join('\n');
+
+    // Calculate fleet-wide stats
+    const temps = devices.map(d => d.temp_cabinet);
+    const avgTemp = temps.reduce((a, b) => a + b, 0) / temps.length;
+    const powers = devices.map(d => d.compressor_power_w);
+    const totalPower = powers.reduce((a, b) => a + b, 0);
+
+    return `
+SUBZERO FLEET STATUS
+====================
+Total Units: ${devices.length}
+🟢 Healthy: ${healthy.length}
+🟡 Warning: ${warning.length}
+🔴 Critical: ${critical.length}
+
+Fleet Stats:
+- Average Cabinet Temp: ${avgTemp.toFixed(1)}°C
+- Total Power Draw: ${totalPower.toFixed(0)}W
+- Last Update: ${new Date(lastFleetDataReceived).toLocaleTimeString()}
+
+Unit Details:
+${deviceSummaries}
+    `.trim();
+}
+
+// Get fleet status (all devices' latest readings)
+app.get('/api/fleet/status', (req, res) => {
+    const now = new Date();
+    const isOnline = lastFleetDataReceived && (now - lastFleetDataReceived) < 30000;
+
+    // Calculate alerts
+    const devices = Object.values(fleetStatus);
+    const alerts = devices.filter(d =>
+        d.fault !== 'NORMAL' ||
+        d.door_open ||
+        d.temp_cabinet > -5 ||
+        d.frost_level > 0.5
+    );
+
+    res.json({
+        devices: fleetStatus,
+        alerts: alerts,
+        summary: {
+            total: devices.length,
+            healthy: devices.filter(d => d.fault === 'NORMAL' && !d.door_open && d.temp_cabinet <= -10).length,
+            warning: devices.filter(d => d.door_open || d.frost_level > 0.5).length,
+            critical: devices.filter(d => d.fault !== 'NORMAL' || d.temp_cabinet > -5).length
+        },
+        isOnline,
+        lastDataReceived: lastFleetDataReceived
+    });
+});
+
+// Get specific device history
+app.get('/api/freezer/:device_id/history', (req, res) => {
+    const { device_id } = req.params;
+    const history = freezerHistory[device_id] || [];
+
+    res.json({
+        device_id,
+        history,
+        latest: fleetStatus[device_id] || null,
+        readingsCount: history.length
+    });
+});
+
+// Fleet AI chat
+app.post('/api/freezer/chat', async (req, res) => {
+    const { message } = req.body;
+    if (!message) return res.status(400).json({ error: "Message is required" });
+
+    if (!model) {
+        return res.status(500).json({ error: "AI not configured - missing API key" });
+    }
+
+    try {
+        const context = buildFleetContext();
+        const prompt = `You are an AI assistant for the Subzero freezer fleet monitoring system. You help operators monitor and diagnose issues across a fleet of commercial freezers.
+
+Your responsibilities:
+- Monitor temperature anomalies (freezers should be below -15°C)
+- Alert on door-open events (causes temperature rise)
+- Track compressor health (power consumption, frequency)
+- Monitor frost buildup (may need defrost cycle)
+- Identify failing units before complete breakdown
+
+Current Fleet Context:
+${context}
+
+Operator Question: ${message}
+
+Provide a helpful, actionable response. If there are critical issues, prioritize them. Use the freezer IDs and locations when referring to specific units.`;
+
+        const result = await model.generateContent(prompt);
+        const text = result.response.text();
+
+        res.json({
+            response: text,
+            context: {
+                totalDevices: Object.keys(fleetStatus).length,
+                alertCount: Object.values(fleetStatus).filter(d =>
+                    d.fault !== 'NORMAL' || d.door_open || d.temp_cabinet > -5
+                ).length
+            }
+        });
+    } catch (error) {
+        console.error("Gemini API error:", error);
+        res.status(500).json({ error: "Failed to generate response" });
+    }
+});
+
+// Fleet status summary
+app.get('/api/fleet/summary', (req, res) => {
+    const devices = Object.values(fleetStatus);
+    if (devices.length === 0) {
+        return res.json({ message: "No fleet data available" });
+    }
+
+    const temps = devices.map(d => d.temp_cabinet);
+    const powers = devices.map(d => d.compressor_power_w);
+
+    res.json({
+        deviceCount: devices.length,
+        temperature: {
+            average: temps.reduce((a, b) => a + b, 0) / temps.length,
+            min: Math.min(...temps),
+            max: Math.max(...temps)
+        },
+        power: {
+            total: powers.reduce((a, b) => a + b, 0),
+            average: powers.reduce((a, b) => a + b, 0) / powers.length
+        },
+        alerts: {
+            doorOpen: devices.filter(d => d.door_open).length,
+            highTemp: devices.filter(d => d.temp_cabinet > -10).length,
+            faults: devices.filter(d => d.fault !== 'NORMAL').length,
+            highFrost: devices.filter(d => d.frost_level > 0.5).length
+        }
+    });
+});
+
 // ==================== FIRMWARE OTA ENDPOINTS ====================
 
 // Upload firmware (called by GitHub Actions)
@@ -520,6 +731,13 @@ io.on('connection', (socket) => {
         lastDataReceived: lastCarDataReceived
     });
 
+    // Send fleet data for Subzero dashboard
+    socket.emit('initialFleetData', {
+        devices: fleetStatus,
+        history: freezerHistory,
+        lastDataReceived: lastFleetDataReceived
+    });
+
     socket.on('disconnect', () => {
         console.log('📴 Dashboard client disconnected:', socket.id);
     });
@@ -532,6 +750,8 @@ httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`👉 Unified endpoint: http://192.168.1.183:${PORT}/api/data`);
     console.log(`   - sensor_type: 'car_telemetry' → Car Dashboard`);
     console.log(`   - sensor_type: 'weather_station' → Weather Dashboard`);
+    console.log(`   - sensor_type: 'freezer' → Subzero Fleet Dashboard`);
     console.log(`👉 Dashboard: http://localhost:4001`);
     console.log(`👉 Command Center: http://localhost:4001/command-center`);
+    console.log(`👉 Subzero Fleet: http://localhost:4001/freezer`);
 });

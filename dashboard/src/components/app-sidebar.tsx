@@ -12,7 +12,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { Settings, Cpu, Car, LayoutGrid } from "lucide-react";
+import { Settings, Cpu, Car, LayoutGrid, Snowflake } from "lucide-react";
 import { ConnectionStatus } from "./connection-status";
 
 interface AppSidebarProps {
@@ -37,6 +37,11 @@ const navItems = [
     title: "Car Dashboard",
     url: "/car",
     icon: Car,
+  },
+  {
+    title: "Subzero Fleet",
+    url: "/freezer",
+    icon: Snowflake,
   },
   {
     title: "Settings",

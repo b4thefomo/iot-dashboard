@@ -1,19 +1,16 @@
 "use client";
 
 import * as React from "react";
+import { useState } from "react";
 import { FreezerSidebar } from "@/components/freezer-sidebar";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { FleetHeader } from "@/components/fleet-header";
 import { Badge } from "@/components/ui/badge";
 import {
   BookOpen,
   Code,
-  Snowflake,
   Copy,
   Check,
 } from "lucide-react";
-import Link from "next/link";
-import { useState } from "react";
 
 interface EndpointDoc {
   method: "GET" | "POST";
@@ -28,7 +25,7 @@ const endpoints: EndpointDoc[] = [
   {
     method: "GET",
     path: "/api/fleet/status",
-    description: "Get current status of all fleet devices including alerts and summary statistics.",
+    description: "Get current status of all asset devices including alerts and summary statistics.",
     response: `{
   "devices": { "SUBZ_001": {...}, ... },
   "alerts": [...],
@@ -69,12 +66,12 @@ const endpoints: EndpointDoc[] = [
   {
     method: "POST",
     path: "/api/freezer/chat",
-    description: "Send a message to the AI assistant for fleet analysis.",
+    description: "Send a message to the AI assistant for asset analysis.",
     params: [
       { name: "message", type: "string", description: "The user's question or command" },
     ],
     response: `{
-  "response": "Based on the fleet data, 2 units are showing warning...",
+  "response": "Based on the asset data, 2 units are showing warning...",
   "context": {
     "totalDevices": 15,
     "alertCount": 3
@@ -87,7 +84,7 @@ const endpoints: EndpointDoc[] = [
   {
     method: "GET",
     path: "/api/fleet/export/csv",
-    description: "Download fleet data as a CSV file.",
+    description: "Download asset data as a CSV file.",
     params: [
       { name: "range", type: "string", description: "Time range: 'current', '24h', '7d', or '30d'" },
     ],
@@ -111,7 +108,7 @@ door_open, defrost_on, fault, status, timestamp`,
   {
     method: "GET",
     path: "/api/fleet/summary",
-    description: "Get aggregated fleet statistics.",
+    description: "Get aggregated asset statistics.",
     response: `{
   "deviceCount": 15,
   "temperature": {
@@ -134,7 +131,7 @@ door_open, defrost_on, fault, status, timestamp`,
   },
 ];
 
-function CodeBlock({ code, language }: { code: string; language?: string }) {
+function CodeBlock({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -145,12 +142,12 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
 
   return (
     <div className="relative group">
-      <pre className="bg-slate-900 text-slate-100 rounded-lg p-4 overflow-x-auto text-sm font-mono">
+      <pre className="bg-slate-900 text-slate-100 p-4 overflow-x-auto text-sm font-mono">
         <code>{code}</code>
       </pre>
       <button
         onClick={handleCopy}
-        className="absolute top-2 right-2 p-2 rounded bg-slate-700 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-600"
+        className="absolute top-2 right-2 p-2 bg-slate-700 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-600"
       >
         {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
       </button>
@@ -159,138 +156,132 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
 }
 
 export default function DocsPage() {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex flex-col">
-      {/* Header */}
-      <header className="border-b bg-white/80 backdrop-blur sticky top-0 z-50">
-        <div className="px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-blue-600 text-white">
-                <Snowflake className="h-6 w-6" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-slate-900">Subzero Fleet Command</h1>
-                <p className="text-xs text-slate-500">API Documentation</p>
-              </div>
-            </div>
-            <Link href="/freezer">
-              <Button variant="outline" size="sm">
-                ← Back to Dashboard
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-slate-100 flex">
+      {/* Sidebar */}
+      <FreezerSidebar
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+      />
 
-      {/* Main layout with sidebar */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left Sidebar */}
-        <FreezerSidebar />
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Top Header */}
+        <FleetHeader
+          title="API Documentation"
+          isConnected={true}
+          isOnline={true}
+          alertCount={0}
+        />
 
-        {/* Main Content */}
+        {/* Content Area */}
         <main className="flex-1 overflow-auto p-6">
-          <div className="max-w-4xl mx-auto">
+          <div className="max-w-4xl">
             {/* Page Title */}
             <div className="mb-6">
-              <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-                <BookOpen className="h-6 w-6" />
-                API Documentation
-              </h2>
-              <p className="text-slate-600 mt-1">
-                Integrate with the Subzero Fleet Command API to access fleet data programmatically.
+              <div className="flex items-center gap-2 mb-1">
+                <BookOpen className="h-5 w-5 text-slate-600" />
+                <h2 className="text-xl font-bold text-slate-900">
+                  API Reference
+                </h2>
+              </div>
+              <p className="text-slate-600 text-sm">
+                Integrate with the Subzero Asset Command API to access asset data programmatically.
               </p>
             </div>
 
-            {/* Base URL */}
-            <Card className="mb-6">
-              <CardHeader>
-                <CardTitle className="text-base">Base URL</CardTitle>
-              </CardHeader>
-              <CardContent>
+            {/* Base URL Card */}
+            <div className="bg-white border mb-6">
+              <div className="px-4 py-3 border-b">
+                <h3 className="font-semibold text-slate-900">Base URL</h3>
+              </div>
+              <div className="p-4">
                 <CodeBlock code="http://localhost:4000" />
                 <p className="text-sm text-slate-500 mt-2">
                   All API endpoints are relative to this base URL.
                 </p>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
-            {/* Endpoints */}
-            <div className="space-y-6">
-              <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-                <Code className="h-5 w-5" />
-                Endpoints
-              </h3>
+            {/* Endpoints Section */}
+            <div className="mb-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Code className="h-5 w-5 text-slate-600" />
+                <h3 className="text-lg font-semibold text-slate-900">Endpoints</h3>
+              </div>
 
-              {endpoints.map((endpoint, idx) => (
-                <Card key={idx}>
-                  <CardHeader>
-                    <div className="flex items-center gap-3">
-                      <Badge
-                        variant={endpoint.method === "GET" ? "default" : "secondary"}
-                        className={endpoint.method === "GET" ? "bg-emerald-500" : "bg-blue-500"}
-                      >
-                        {endpoint.method}
-                      </Badge>
-                      <code className="text-base font-mono text-slate-800">{endpoint.path}</code>
-                    </div>
-                    <CardDescription className="mt-2">
-                      {endpoint.description}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {/* Parameters */}
-                    {endpoint.params && endpoint.params.length > 0 && (
-                      <div>
-                        <h4 className="text-sm font-medium text-slate-700 mb-2">Parameters</h4>
-                        <div className="bg-slate-50 rounded-lg p-3">
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="text-left text-slate-500">
-                                <th className="pb-2">Name</th>
-                                <th className="pb-2">Type</th>
-                                <th className="pb-2">Description</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {endpoint.params.map((param, pIdx) => (
-                                <tr key={pIdx} className="border-t border-slate-200">
-                                  <td className="py-2 font-mono text-blue-600">{param.name}</td>
-                                  <td className="py-2 text-slate-600">{param.type}</td>
-                                  <td className="py-2 text-slate-600">{param.description}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
+              <div className="space-y-4">
+                {endpoints.map((endpoint, idx) => (
+                  <div key={idx} className="bg-white border">
+                    <div className="px-4 py-3 border-b">
+                      <div className="flex items-center gap-3">
+                        <Badge
+                          className={endpoint.method === "GET" ? "bg-emerald-500 text-white border-0" : "bg-blue-500 text-white border-0"}
+                        >
+                          {endpoint.method}
+                        </Badge>
+                        <code className="text-sm font-mono text-slate-800">{endpoint.path}</code>
                       </div>
-                    )}
-
-                    {/* Response */}
-                    <div>
-                      <h4 className="text-sm font-medium text-slate-700 mb-2">Response</h4>
-                      <CodeBlock code={endpoint.response} language="json" />
+                      <p className="text-sm text-slate-500 mt-2">
+                        {endpoint.description}
+                      </p>
                     </div>
+                    <div className="p-4 space-y-4">
+                      {/* Parameters */}
+                      {endpoint.params && endpoint.params.length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-medium text-slate-700 mb-2">Parameters</h4>
+                          <div className="bg-slate-50 p-3">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="text-left text-slate-500">
+                                  <th className="pb-2">Name</th>
+                                  <th className="pb-2">Type</th>
+                                  <th className="pb-2">Description</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {endpoint.params.map((param, pIdx) => (
+                                  <tr key={pIdx} className="border-t border-slate-200">
+                                    <td className="py-2 font-mono text-blue-600">{param.name}</td>
+                                    <td className="py-2 text-slate-600">{param.type}</td>
+                                    <td className="py-2 text-slate-600">{param.description}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
 
-                    {/* Example */}
-                    <div>
-                      <h4 className="text-sm font-medium text-slate-700 mb-2">Example</h4>
-                      <CodeBlock code={endpoint.example} language="bash" />
+                      {/* Response */}
+                      <div>
+                        <h4 className="text-sm font-medium text-slate-700 mb-2">Response</h4>
+                        <CodeBlock code={endpoint.response} />
+                      </div>
+
+                      {/* Example */}
+                      <div>
+                        <h4 className="text-sm font-medium text-slate-700 mb-2">Example</h4>
+                        <CodeBlock code={endpoint.example} />
+                      </div>
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* WebSocket Info */}
-            <Card className="mt-6">
-              <CardHeader>
-                <CardTitle className="text-base">WebSocket Connection</CardTitle>
-                <CardDescription>
+            <div className="bg-white border">
+              <div className="px-4 py-3 border-b">
+                <h3 className="font-semibold text-slate-900">WebSocket Connection</h3>
+                <p className="text-sm text-slate-500">
                   For real-time updates, connect via Socket.IO.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
+                </p>
+              </div>
+              <div className="p-4 space-y-4">
                 <div>
                   <h4 className="text-sm font-medium text-slate-700 mb-2">Connection</h4>
                   <CodeBlock
@@ -298,9 +289,9 @@ export default function DocsPage() {
 
 const socket = io("http://localhost:4000");
 
-// Listen for real-time fleet updates
+// Listen for real-time asset updates
 socket.on("fleetUpdate", (data) => {
-  console.log("Fleet updated:", data);
+  console.log("Assets updated:", data);
 });
 
 // Listen for individual freezer readings
@@ -312,7 +303,7 @@ socket.on("freezerData", (reading) => {
 
                 <div>
                   <h4 className="text-sm font-medium text-slate-700 mb-2">Events</h4>
-                  <div className="bg-slate-50 rounded-lg p-3">
+                  <div className="bg-slate-50 p-3">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-left text-slate-500">
@@ -323,11 +314,11 @@ socket.on("freezerData", (reading) => {
                       <tbody>
                         <tr className="border-t border-slate-200">
                           <td className="py-2 font-mono text-blue-600">initialFleetData</td>
-                          <td className="py-2 text-slate-600">Sent on connection with current fleet state</td>
+                          <td className="py-2 text-slate-600">Sent on connection with current asset state</td>
                         </tr>
                         <tr className="border-t border-slate-200">
                           <td className="py-2 font-mono text-blue-600">fleetUpdate</td>
-                          <td className="py-2 text-slate-600">Emitted when any device data changes</td>
+                          <td className="py-2 text-slate-600">Emitted when any asset data changes</td>
                         </tr>
                         <tr className="border-t border-slate-200">
                           <td className="py-2 font-mono text-blue-600">freezerData</td>
@@ -337,21 +328,11 @@ socket.on("freezerData", (reading) => {
                     </table>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </div>
         </main>
       </div>
-
-      {/* Footer */}
-      <footer className="border-t bg-white/80 backdrop-blur flex-shrink-0">
-        <div className="px-4 py-3">
-          <div className="flex items-center justify-between text-xs text-slate-500">
-            <div>Subzero Fleet Command v1.0</div>
-            <div>API Documentation</div>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

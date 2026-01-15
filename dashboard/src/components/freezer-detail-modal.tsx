@@ -172,7 +172,7 @@ export function FreezerDetailModal({
 
         {/* Current Alerts */}
         {(device.door_open || device.frost_level > 0.5 || device.fault !== "NORMAL") && (
-          <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+          <div className="mt-4 p-3 bg-amber-50 border border-amber-200 ">
             <div className="flex items-center gap-2 text-amber-700 font-medium mb-2">
               <AlertTriangle className="h-4 w-4" />
               Active Issues
@@ -319,7 +319,7 @@ export function FreezerDetailModal({
               {anomalies.slice(-10).reverse().map((point, idx) => (
                 <div
                   key={idx}
-                  className="flex items-center justify-between p-2 bg-slate-50 rounded text-sm"
+                  className="flex items-center justify-between p-2 bg-slate-50 text-sm"
                 >
                   <span className="text-slate-600">{point.time}</span>
                   <div className="flex items-center gap-3">

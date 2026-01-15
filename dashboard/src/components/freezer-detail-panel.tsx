@@ -72,7 +72,7 @@ export function FreezerDetailPanel({
       <CardContent className="space-y-4">
         {/* Temperature */}
         <div className="grid grid-cols-2 gap-3">
-          <div className="p-3 rounded-lg bg-muted/50">
+          <div className="p-3  bg-muted/50">
             <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
               <Thermometer className="h-3 w-3" />
               Cabinet Temp
@@ -81,7 +81,7 @@ export function FreezerDetailPanel({
               {device.temp_cabinet.toFixed(1)}°C
             </div>
           </div>
-          <div className="p-3 rounded-lg bg-muted/50">
+          <div className="p-3  bg-muted/50">
             <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
               <Thermometer className="h-3 w-3" />
               Ambient Temp
@@ -94,7 +94,7 @@ export function FreezerDetailPanel({
 
         {/* Power and Efficiency */}
         <div className="grid grid-cols-2 gap-3">
-          <div className="p-3 rounded-lg bg-muted/50">
+          <div className="p-3  bg-muted/50">
             <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
               <Zap className="h-3 w-3" />
               Power Draw
@@ -103,7 +103,7 @@ export function FreezerDetailPanel({
               {device.compressor_power_w.toFixed(0)}W
             </div>
           </div>
-          <div className="p-3 rounded-lg bg-muted/50">
+          <div className="p-3  bg-muted/50">
             <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
               <Activity className="h-3 w-3" />
               COP
@@ -115,7 +115,7 @@ export function FreezerDetailPanel({
         </div>
 
         {/* Compressor */}
-        <div className="p-3 rounded-lg bg-muted/50">
+        <div className="p-3  bg-muted/50">
           <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
             <Gauge className="h-3 w-3" />
             Compressor Frequency
@@ -126,14 +126,14 @@ export function FreezerDetailPanel({
         </div>
 
         {/* Frost Level */}
-        <div className="p-3 rounded-lg bg-muted/50">
+        <div className="p-3  bg-muted/50">
           <div className="flex items-center gap-2 text-muted-foreground text-xs mb-2">
             <Snowflake className="h-3 w-3" />
             Frost Level
           </div>
-          <div className="w-full bg-slate-200 rounded-full h-2">
+          <div className="w-full bg-slate-200  h-2">
             <div
-              className={`h-2 rounded-full ${device.frost_level > 0.5 ? "bg-amber-500" : "bg-blue-500"}`}
+              className={`h-2  ${device.frost_level > 0.5 ? "bg-amber-500" : "bg-blue-500"}`}
               style={{ width: `${device.frost_level * 100}%` }}
             />
           </div>

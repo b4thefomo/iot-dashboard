@@ -123,7 +123,7 @@ export function CarChatInterface() {
                   </Avatar>
                 )}
                 <div
-                  className={`rounded-lg px-4 py-2 max-w-[80%] ${
+                  className={` px-4 py-2 max-w-[80%] ${
                     message.role === "user"
                       ? "bg-primary text-primary-foreground"
                       : "bg-muted"
@@ -147,7 +147,7 @@ export function CarChatInterface() {
                     <Bot className="h-4 w-4" />
                   </AvatarFallback>
                 </Avatar>
-                <div className="rounded-lg px-4 py-2 bg-muted">
+                <div className=" px-4 py-2 bg-muted">
                   <Loader2 className="h-4 w-4 animate-spin" />
                 </div>
               </div>

@@ -1,12 +1,17 @@
 "use client";
 
-import * as React from "react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { FreezerReading } from "@/hooks/use-fleet-data";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { DoorOpen, Snowflake, MapPin, AlertTriangle, CheckCircle } from "lucide-react";
-import { ExportControls } from "@/components/export-controls";
+import { Button } from "@/components/ui/button";
+import {
+  ChevronDown,
+  ChevronRight,
+  MapPin,
+  Snowflake,
+  FileSpreadsheet,
+  FileText,
+} from "lucide-react";
 
 interface FleetStatusTableProps {
   devices: FreezerReading[];
@@ -30,22 +35,14 @@ export function FleetStatusTable({
   onSelectDevice,
   getDeviceStatus,
 }: FleetStatusTableProps) {
+  const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set());
+
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+
   const statusColors = {
     healthy: "bg-emerald-500",
     warning: "bg-amber-500",
     critical: "bg-red-500",
-  };
-
-  const statusBgColors = {
-    healthy: "bg-emerald-50",
-    warning: "bg-amber-50",
-    critical: "bg-red-50",
-  };
-
-  const statusBorderColors = {
-    healthy: "border-emerald-200",
-    warning: "border-amber-200",
-    critical: "border-red-200",
   };
 
   // Group devices by location
@@ -84,160 +81,211 @@ export function FleetStatusTable({
       }
     });
 
-    // Sort: critical first, then warning, then healthy
-    return Object.values(groups).sort((a, b) => {
-      const priority = { critical: 0, warning: 1, healthy: 2 };
-      return priority[a.overallStatus] - priority[b.overallStatus];
-    });
+    // Sort alphabetically
+    return Object.values(groups).sort((a, b) => a.location.localeCompare(b.location));
   }, [devices, getDeviceStatus]);
 
+
+  const toggleLocation = (location: string) => {
+    setExpandedLocations((prev) => {
+      const next = new Set(prev);
+      if (next.has(location)) {
+        next.delete(location);
+      } else {
+        next.add(location);
+      }
+      return next;
+    });
+  };
+
+  const getStatusBadge = (group: LocationGroup) => {
+    if (group.criticalCount > 0) {
+      return (
+        <Badge className="bg-red-100 text-red-600 border-0">
+          {group.criticalCount} Critical
+        </Badge>
+      );
+    }
+    if (group.warningCount > 0) {
+      return (
+        <Badge className="bg-amber-100 text-amber-600 border-0">
+          {group.warningCount} Warning
+        </Badge>
+      );
+    }
+    return (
+      <Badge className="bg-emerald-100 text-emerald-600 border-0">
+        All Healthy
+      </Badge>
+    );
+  };
+
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Snowflake className="h-4 w-4" />
-            Fleet Status by Region
-          </CardTitle>
-          <ExportControls />
+    <div className="bg-slate-50 border">
+      {/* Header */}
+      <div className="px-4 py-3 border-b bg-white flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Snowflake className="h-4 w-4 text-cyan-500" />
+          <h3 className="font-semibold text-slate-900">Asset Status by Region</h3>
         </div>
-      </CardHeader>
-      <CardContent className="p-0">
-        {locationGroups.length === 0 ? (
-          <div className="p-8 text-center text-slate-500">
-            No devices connected
-          </div>
-        ) : (
-          <div className="divide-y">
-            {locationGroups.map((group) => (
-              <div key={group.location}>
-                {/* Location Header */}
-                <div
-                  className={`px-4 py-3 flex items-center justify-between ${statusBgColors[group.overallStatus]} ${statusBorderColors[group.overallStatus]} border-l-4`}
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5"
+            onClick={() => window.open(`${apiUrl}/api/fleet/export/csv`, "_blank")}
+          >
+            <FileSpreadsheet className="h-3.5 w-3.5" />
+            CSV
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5"
+            onClick={() => window.open(`${apiUrl}/api/fleet/export/pdf`, "_blank")}
+          >
+            <FileText className="h-3.5 w-3.5" />
+            PDF Report
+          </Button>
+        </div>
+      </div>
+
+      {/* Content */}
+      {locationGroups.length === 0 ? (
+        <div className="p-8 text-center text-slate-500">No devices connected</div>
+      ) : (
+        <div className="p-2 space-y-3">
+          {locationGroups.map((group) => {
+            const isExpanded = expandedLocations.has(group.location);
+
+            return (
+              <div key={group.location} className="border bg-white">
+                {/* Location Row */}
+                <button
+                  className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-50 transition-colors"
+                  onClick={() => toggleLocation(group.location)}
                 >
-                  <div className="flex items-center gap-2">
-                    <MapPin className="h-4 w-4 text-slate-600" />
-                    <span className="font-semibold text-slate-800">
-                      {group.location}
-                    </span>
-                    <span className="text-xs text-slate-500">
+                  <div className="flex items-center gap-3">
+                    {isExpanded ? (
+                      <ChevronDown className="h-4 w-4 text-slate-400" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-slate-400" />
+                    )}
+                    <MapPin className="h-4 w-4 text-slate-400" />
+                    <span className="font-medium text-slate-900">{group.location}</span>
+                    <span className="text-sm text-slate-500">
                       ({group.devices.length} unit{group.devices.length !== 1 ? "s" : ""})
                     </span>
                   </div>
-                  <div className="flex items-center gap-3">
-                    {group.criticalCount > 0 && (
-                      <Badge variant="outline" className="bg-red-100 text-red-700 border-red-300">
-                        <AlertTriangle className="h-3 w-3 mr-1" />
-                        {group.criticalCount} Critical
-                      </Badge>
-                    )}
-                    {group.warningCount > 0 && (
-                      <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-300">
-                        <AlertTriangle className="h-3 w-3 mr-1" />
-                        {group.warningCount} Warning
-                      </Badge>
-                    )}
-                    {group.healthyCount > 0 && group.criticalCount === 0 && group.warningCount === 0 && (
-                      <Badge variant="outline" className="bg-emerald-100 text-emerald-700 border-emerald-300">
-                        <CheckCircle className="h-3 w-3 mr-1" />
-                        All Healthy
-                      </Badge>
-                    )}
-                  </div>
-                </div>
+                  {getStatusBadge(group)}
+                </button>
 
-                {/* Devices Table for this location */}
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b bg-slate-50/50">
-                        <th className="text-left p-3 font-medium text-slate-500 text-xs">Unit ID</th>
-                        <th className="text-right p-3 font-medium text-slate-500 text-xs">Temp</th>
-                        <th className="text-right p-3 font-medium text-slate-500 text-xs">Power</th>
-                        <th className="text-right p-3 font-medium text-slate-500 text-xs">Frost</th>
-                        <th className="text-center p-3 font-medium text-slate-500 text-xs">Door</th>
-                        <th className="text-center p-3 font-medium text-slate-500 text-xs">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {group.devices.map((device) => {
-                        const status = getDeviceStatus(device);
-                        const isSelected = selectedDevice === device.device_id;
+                {/* Expanded Content */}
+                {isExpanded && (
+                  <div className="border-t bg-slate-50/50">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left px-4 py-2 font-medium text-slate-500 text-xs">
+                            Unit ID
+                          </th>
+                          <th className="text-left px-4 py-2 font-medium text-slate-500 text-xs">
+                            Temp
+                          </th>
+                          <th className="text-left px-4 py-2 font-medium text-slate-500 text-xs">
+                            Power
+                          </th>
+                          <th className="text-left px-4 py-2 font-medium text-slate-500 text-xs">
+                            Frost
+                          </th>
+                          <th className="text-left px-4 py-2 font-medium text-slate-500 text-xs">
+                            Door
+                          </th>
+                          <th className="text-left px-4 py-2 font-medium text-slate-500 text-xs">
+                            Status
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {group.devices.map((device) => {
+                          const status = getDeviceStatus(device);
+                          const isSelected = selectedDevice === device.device_id;
 
-                        return (
-                          <tr
-                            key={device.device_id}
-                            className={`border-b cursor-pointer transition-colors hover:bg-slate-50 ${
-                              isSelected ? statusBgColors[status] : ""
-                            }`}
-                            onClick={() => onSelectDevice(isSelected ? null : device.device_id)}
-                          >
-                            <td className="p-3 font-medium text-slate-900">
-                              {device.device_id}
-                            </td>
-                            <td
-                              className={`p-3 text-right font-mono ${
-                                device.temp_cabinet > -10
-                                  ? "text-red-600 font-semibold"
-                                  : device.temp_cabinet > -15
-                                  ? "text-amber-600"
-                                  : "text-slate-900"
+                          return (
+                            <tr
+                              key={device.device_id}
+                              className={`border-b last:border-b-0 cursor-pointer transition-colors hover:bg-white ${
+                                isSelected ? "bg-cyan-50" : ""
                               }`}
+                              onClick={() =>
+                                onSelectDevice(isSelected ? null : device.device_id)
+                              }
                             >
-                              {device.temp_cabinet.toFixed(1)}°C
-                            </td>
-                            <td className="p-3 text-right font-mono text-slate-600">
-                              {device.compressor_power_w.toFixed(0)}W
-                            </td>
-                            <td className="p-3 text-right">
-                              <div className="flex items-center justify-end gap-1">
-                                <div className="w-12 h-2 bg-slate-200 rounded-full overflow-hidden">
-                                  <div
-                                    className={`h-full rounded-full ${
+                              <td className="px-4 py-2.5 font-medium text-slate-900">
+                                {device.device_id}
+                              </td>
+                              <td
+                                className={`px-4 py-2.5 font-mono ${
+                                  device.temp_cabinet > -10
+                                    ? "text-red-600"
+                                    : device.temp_cabinet > -15
+                                    ? "text-amber-600"
+                                    : "text-cyan-600"
+                                }`}
+                              >
+                                {device.temp_cabinet.toFixed(1)}°C
+                              </td>
+                              <td className="px-4 py-2.5 font-mono text-slate-600">
+                                {device.compressor_power_w.toFixed(0)}W
+                              </td>
+                              <td className="px-4 py-2.5">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-16 h-2 bg-slate-200 overflow-hidden">
+                                    <div
+                                      className={`h-full ${
+                                        device.frost_level > 0.5
+                                          ? "bg-amber-500"
+                                          : "bg-emerald-500"
+                                      }`}
+                                      style={{ width: `${device.frost_level * 100}%` }}
+                                    />
+                                  </div>
+                                  <span
+                                    className={`text-xs ${
                                       device.frost_level > 0.5
-                                        ? "bg-blue-500"
-                                        : "bg-slate-400"
+                                        ? "text-amber-600"
+                                        : "text-slate-500"
                                     }`}
-                                    style={{ width: `${device.frost_level * 100}%` }}
-                                  />
+                                  >
+                                    {(device.frost_level * 100).toFixed(0)}%
+                                  </span>
                                 </div>
-                                <span className="text-xs text-slate-500 w-8">
-                                  {(device.frost_level * 100).toFixed(0)}%
-                                </span>
-                              </div>
-                            </td>
-                            <td className="p-3 text-center">
-                              {device.door_open ? (
-                                <Badge
-                                  variant="outline"
-                                  className="bg-amber-50 text-amber-700 border-amber-200"
-                                >
-                                  <DoorOpen className="h-3 w-3 mr-1" />
-                                  Open
-                                </Badge>
-                              ) : (
-                                <span className="text-slate-400 text-xs">Closed</span>
-                              )}
-                            </td>
-                            <td className="p-3">
-                              <div className="flex justify-center">
+                              </td>
+                              <td className="px-4 py-2.5 text-slate-600">
+                                {device.door_open ? (
+                                  <span className="text-amber-600">Open</span>
+                                ) : (
+                                  "Closed"
+                                )}
+                              </td>
+                              <td className="px-4 py-2.5">
                                 <div
-                                  className={`w-3 h-3 rounded-full ${statusColors[status]}`}
+                                  className={`w-3 h-3 ${statusColors[status]}`}
                                   title={status.charAt(0).toUpperCase() + status.slice(1)}
                                 />
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }

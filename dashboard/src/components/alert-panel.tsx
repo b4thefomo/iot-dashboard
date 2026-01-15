@@ -1,11 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { FreezerReading } from "@/hooks/use-fleet-data";
-import { AlertTriangle, DoorOpen, Thermometer, Snowflake } from "lucide-react";
+import { AlertTriangle, ChevronRight, Snowflake } from "lucide-react";
 
 interface AlertPanelProps {
   alerts: FreezerReading[];
@@ -13,14 +12,6 @@ interface AlertPanelProps {
 }
 
 export function AlertPanel({ alerts, onSelectDevice }: AlertPanelProps) {
-  const getAlertType = (device: FreezerReading) => {
-    if (device.fault !== "NORMAL") return { type: "fault", icon: AlertTriangle, color: "text-red-600" };
-    if (device.temp_cabinet > -5) return { type: "temp", icon: Thermometer, color: "text-red-600" };
-    if (device.door_open) return { type: "door", icon: DoorOpen, color: "text-amber-600" };
-    if (device.frost_level > 0.5) return { type: "frost", icon: Snowflake, color: "text-blue-600" };
-    return { type: "unknown", icon: AlertTriangle, color: "text-gray-600" };
-  };
-
   const getAlertMessage = (device: FreezerReading) => {
     if (device.fault !== "NORMAL") return device.fault;
     if (device.temp_cabinet > -5) return `High temp: ${device.temp_cabinet.toFixed(1)}°C`;
@@ -29,58 +20,63 @@ export function AlertPanel({ alerts, onSelectDevice }: AlertPanelProps) {
     return "Unknown alert";
   };
 
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4" />
-          Active Alerts
-          {alerts.length > 0 && (
-            <Badge variant="destructive" className="ml-auto">
-              {alerts.length}
-            </Badge>
-          )}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {alerts.length === 0 ? (
-          <div className="text-center py-4 text-muted-foreground">
-            <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">No active alerts</p>
-            <p className="text-xs">All systems operating normally</p>
-          </div>
-        ) : (
-          <ScrollArea className="h-[200px]">
-            <div className="space-y-2">
-              {alerts.map((alert) => {
-                const alertInfo = getAlertType(alert);
-                const Icon = alertInfo.icon;
+  const getAlertColor = (device: FreezerReading) => {
+    if (device.fault !== "NORMAL" || device.temp_cabinet > -5) return "text-red-500";
+    if (device.door_open) return "text-amber-500";
+    return "text-amber-500";
+  };
 
-                return (
-                  <div
-                    key={alert.device_id}
-                    className="flex items-center gap-3 p-2 rounded-lg bg-muted/50 cursor-pointer hover:bg-muted transition-colors"
-                    onClick={() => onSelectDevice(alert.device_id)}
-                  >
-                    <Icon className={`h-4 w-4 ${alertInfo.color}`} />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm truncate">
-                        {alert.device_id}
-                      </div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        {alert.location_name}
-                      </div>
-                    </div>
-                    <div className="text-xs text-right">
-                      <div className={alertInfo.color}>{getAlertMessage(alert)}</div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </ScrollArea>
+  return (
+    <div className="bg-white border">
+      {/* Header */}
+      <div className="px-4 py-3 border-b flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 text-amber-500" />
+          <h3 className="font-semibold text-slate-900">Active Alerts</h3>
+        </div>
+        {alerts.length > 0 && (
+          <Badge className="bg-amber-100 text-amber-600 border-0">
+            {alerts.length}
+          </Badge>
         )}
-      </CardContent>
-    </Card>
+      </div>
+
+      {/* Content */}
+      {alerts.length === 0 ? (
+        <div className="p-6 text-center text-slate-500">
+          <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-30" />
+          <p className="text-sm">No active alerts</p>
+          <p className="text-xs text-slate-400">All systems operating normally</p>
+        </div>
+      ) : (
+        <ScrollArea className="h-[180px]">
+          <div className="divide-y">
+            {alerts.map((alert) => (
+              <button
+                key={alert.device_id}
+                className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors text-left"
+                onClick={() => onSelectDevice(alert.device_id)}
+              >
+                <Snowflake className="h-4 w-4 text-cyan-500 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm text-slate-900">
+                      {alert.device_id}
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      {alert.location_name}
+                    </span>
+                  </div>
+                  <div className={`text-xs ${getAlertColor(alert)}`}>
+                    {getAlertMessage(alert)}
+                  </div>
+                </div>
+                <ChevronRight className="h-4 w-4 text-slate-400 flex-shrink-0" />
+              </button>
+            ))}
+          </div>
+        </ScrollArea>
+      )}
+    </div>
   );
 }

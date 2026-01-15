@@ -593,7 +593,18 @@ ${context}
 
 User Question: ${message}
 
-Provide a comprehensive, insightful response. If the user asks about correlations or comparisons, analyze both datasets together.`;
+Provide a comprehensive, insightful response. If the user asks about correlations or comparisons, analyze both datasets together.
+
+IMPORTANT: At the end of your response, always include a "Suggested Actions" section with 2-4 relevant follow-up actions the user might want to take. Format them exactly like this:
+
+---
+**Suggested Actions:**
+- 📤 Share report with team
+- 📊 Download detailed CSV
+- 🔔 Set up alert notification
+- 📋 Create action plan
+
+Choose actions relevant to your response content. Possible actions include: notify team, share report, download CSV, generate PDF report, create action plan, schedule maintenance, set alert threshold, export data, review history, contact support.`;
 
         const result = await model.generateContent(prompt);
         const text = result.response.text();
@@ -749,7 +760,18 @@ ${context}
 
 Operator Question: ${message}
 
-Provide a helpful, actionable response. If there are critical issues, prioritize them. Use the freezer IDs and locations when referring to specific units.`;
+Provide a helpful, actionable response. If there are critical issues, prioritize them. Use the freezer IDs and locations when referring to specific units.
+
+IMPORTANT: At the end of your response, always include a "Suggested Actions" section with 2-4 relevant follow-up actions the operator might want to take. Format them exactly like this:
+
+---
+**Suggested Actions:**
+- 📤 Notify maintenance team
+- 📊 Download fleet report
+- 🔧 Schedule maintenance
+- 📋 Create action plan
+
+Choose actions relevant to your response content. Possible actions include: notify team, share report, download CSV, generate PDF report, create action plan, schedule maintenance, dispatch technician, set alert threshold, export data, review unit history, contact support, initiate defrost cycle.`;
 
         const result = await model.generateContent(prompt);
         const text = result.response.text();

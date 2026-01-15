@@ -42,7 +42,7 @@ export function FleetMap({
 
   if (!MAPBOX_TOKEN) {
     return (
-      <div className="relative w-full h-full min-h-[400px] rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center">
+      <div className="relative w-full h-full min-h-[400px] overflow-hidden bg-slate-100 flex items-center justify-center">
         <div className="text-slate-500 text-center p-4">
           <div className="font-semibold mb-2">Mapbox token not configured</div>
           <div className="text-xs">Add NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN to .env.local</div>
@@ -52,13 +52,13 @@ export function FleetMap({
   }
 
   return (
-    <div className="relative w-full h-full min-h-[400px] rounded-lg overflow-hidden">
+    <div className="relative w-full h-full min-h-[400px] overflow-hidden">
       <Map
         {...viewState}
         onMove={(evt) => setViewState(evt.viewState)}
         mapboxAccessToken={MAPBOX_TOKEN}
         style={{ width: "100%", height: "100%" }}
-        mapStyle="mapbox://styles/mapbox/light-v11"
+        mapStyle="mapbox://styles/gb4de/cma3us4hd001h01slfbvo9ib9"
         minZoom={3}
         maxZoom={12}
       >
@@ -94,8 +94,8 @@ export function FleetMap({
                   <div
                     className="absolute rounded-full animate-ping"
                     style={{
-                      width: 32,
-                      height: 32,
+                      width: isSelected ? 28 : 22,
+                      height: isSelected ? 28 : 22,
                       left: "50%",
                       top: "50%",
                       transform: "translate(-50%, -50%)",
@@ -174,8 +174,8 @@ export function FleetMap({
       </Map>
 
       {/* Legend overlay */}
-      <div className="absolute bottom-4 left-4 bg-white/95 backdrop-blur rounded-lg p-3 shadow-lg text-xs border border-slate-200 pointer-events-none">
-        <div className="font-semibold mb-2 text-slate-800">Fleet Status</div>
+      <div className="absolute bottom-4 left-4 bg-white/95 backdrop-blur p-3 shadow-lg text-xs border border-slate-200 pointer-events-none">
+        <div className="font-semibold mb-2 text-slate-800">Asset Status</div>
         <div className="space-y-1.5">
           <div className="flex items-center gap-2">
             <div
@@ -202,9 +202,9 @@ export function FleetMap({
       </div>
 
       {/* Stats overlay */}
-      <div className="absolute top-4 left-4 bg-white/95 backdrop-blur rounded-lg p-3 shadow-lg text-xs border border-slate-200 pointer-events-none">
+      <div className="absolute top-4 left-4 bg-white/95 backdrop-blur p-3 shadow-lg text-xs border border-slate-200 pointer-events-none">
         <div className="font-semibold text-slate-800">
-          {devices.length} Units Online
+          {devices.length} Assets Online
         </div>
         <div className="text-slate-500 mt-1">Click a marker for details</div>
       </div>

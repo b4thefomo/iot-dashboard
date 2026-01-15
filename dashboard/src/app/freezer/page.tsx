@@ -9,19 +9,20 @@ import { AlertPanel } from "@/components/alert-panel";
 import { FreezerChat } from "@/components/freezer-chat";
 import { FreezerSidebar } from "@/components/freezer-sidebar";
 import { FreezerDetailModal } from "@/components/freezer-detail-modal";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { FleetHeader } from "@/components/fleet-header";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Thermometer,
-  Wifi,
-  WifiOff,
   Activity,
   AlertTriangle,
   CheckCircle,
   Snowflake,
+  Zap,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
 } from "lucide-react";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
 
 export default function FreezerDashboard() {
   const {
@@ -40,6 +41,7 @@ export default function FreezerDashboard() {
 
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [detailDevice, setDetailDevice] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Handle device selection - open modal for details
   const handleSelectDevice = (deviceId: string | null) => {
@@ -63,142 +65,112 @@ export default function FreezerDashboard() {
       : 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex flex-col">
-      {/* Header */}
-      <header className="border-b bg-white/80 backdrop-blur sticky top-0 z-50">
-        <div className="px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-blue-600 text-white">
-                <Snowflake className="h-6 w-6" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-slate-900">Subzero Fleet Command</h1>
-                <p className="text-xs text-slate-500">Real-time Freezer Monitoring</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                {isConnected ? (
-                  <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
-                    <Wifi className="h-3 w-3 mr-1" />
-                    Connected
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
-                    <WifiOff className="h-3 w-3 mr-1" />
-                    Disconnected
-                  </Badge>
-                )}
-                {isOnline ? (
-                  <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
-                    <Activity className="h-3 w-3 mr-1" />
-                    Live Data
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
-                    <Activity className="h-3 w-3 mr-1" />
-                    Stale
-                  </Badge>
-                )}
-              </div>
-              <Link href="/">
-                <Button variant="outline" size="sm">
-                  ← Back to Dashboard
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-slate-100 flex">
+      {/* Sidebar */}
+      <FreezerSidebar
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+      />
 
-      {/* Main layout with sidebar */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left Sidebar */}
-        <FreezerSidebar />
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Top Header */}
+        <FleetHeader
+          title="Asset Overview"
+          isConnected={isConnected}
+          isOnline={isOnline}
+          alertCount={alerts.length}
+        />
 
-        {/* Main Content */}
+        {/* Content Area */}
         <main className="flex-1 overflow-auto p-6">
-          {/* Stats Row */}
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-6">
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
-                  <Snowflake className="h-3 w-3" />
-                  Total Units
-                </div>
-                <div className="text-2xl font-bold">{deviceList.length}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2 text-emerald-600 text-xs mb-1">
-                  <CheckCircle className="h-3 w-3" />
-                  Healthy
-                </div>
-                <div className="text-2xl font-bold text-emerald-600">{healthyCount}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2 text-amber-600 text-xs mb-1">
-                  <AlertTriangle className="h-3 w-3" />
-                  Warning
-                </div>
-                <div className="text-2xl font-bold text-amber-600">{warningCount}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2 text-red-600 text-xs mb-1">
-                  <AlertTriangle className="h-3 w-3" />
-                  Critical
-                </div>
-                <div className="text-2xl font-bold text-red-600">{criticalCount}</div>
-              </CardContent>
-            </Card>
-            <Card className="hidden md:block">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
-                  <Thermometer className="h-3 w-3" />
-                  Avg Temp
-                </div>
-                <div className={`text-2xl font-bold ${avgTemp > -10 ? "text-red-600" : ""}`}>
-                  {avgTemp.toFixed(1)}°C
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="hidden lg:block">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
-                  <Activity className="h-3 w-3" />
-                  Avg Power
-                </div>
-                <div className="text-2xl font-bold">{avgPower.toFixed(0)}W</div>
-              </CardContent>
-            </Card>
-          </div>
+          <div className="flex gap-6">
+            {/* Left Column - Main Content */}
+            <div className="flex-1 min-w-0 space-y-6">
+              {/* Stats Row */}
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                <StatCard
+                  icon={Snowflake}
+                  iconColor="text-cyan-500"
+                  iconBg="bg-cyan-50"
+                  label="Total Units"
+                  value={deviceList.length}
+                />
+                <StatCard
+                  icon={CheckCircle}
+                  iconColor="text-emerald-500"
+                  iconBg="bg-emerald-50"
+                  label="Healthy"
+                  value={healthyCount}
+                  valueColor="text-emerald-600"
+                />
+                <StatCard
+                  icon={AlertTriangle}
+                  iconColor="text-amber-500"
+                  iconBg="bg-amber-50"
+                  label="Warning"
+                  value={warningCount}
+                  valueColor="text-amber-600"
+                />
+                <StatCard
+                  icon={AlertTriangle}
+                  iconColor="text-red-500"
+                  iconBg="bg-red-50"
+                  label="Critical"
+                  value={criticalCount}
+                  valueColor="text-red-600"
+                />
+                <StatCard
+                  icon={Thermometer}
+                  iconColor="text-blue-500"
+                  iconBg="bg-blue-50"
+                  label="Avg Temp"
+                  value={`${avgTemp.toFixed(1)}°C`}
+                  valueColor={avgTemp > -10 ? "text-red-600" : "text-slate-900"}
+                />
+                <StatCard
+                  icon={Zap}
+                  iconColor="text-emerald-500"
+                  iconBg="bg-emerald-50"
+                  label="Avg Power"
+                  value={`${avgPower.toFixed(0)}W`}
+                />
+              </div>
 
-          {/* Main Content Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left Column - Map and Table */}
-            <div className="lg:col-span-2 space-y-4">
-              {/* Map */}
-              <Card className="h-[500px]">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Fleet Location Map</CardTitle>
-                </CardHeader>
-                <CardContent className="h-[calc(100%-60px)]">
+              {/* Map Card */}
+              <div className="bg-white border">
+                {/* Map Header */}
+                <div className="px-4 py-3 border-b flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <h3 className="font-semibold text-slate-900">Asset Location Map</h3>
+                    <Badge className="bg-cyan-100 text-cyan-600 border-0">
+                      {deviceList.length} Assets Online
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <ZoomIn className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <ZoomOut className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <Maximize2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                {/* Map Content */}
+                <div className="h-[400px]">
                   <FleetMap
                     devices={deviceList}
                     selectedDevice={selectedDevice}
                     onSelectDevice={handleSelectDevice}
                     getDeviceStatus={getDeviceStatus}
                   />
-                </CardContent>
-              </Card>
+                </div>
+              </div>
 
-              {/* Fleet Status Table - Under map */}
+              {/* Fleet Status Table */}
               <FleetStatusTable
                 devices={deviceList}
                 selectedDevice={selectedDevice}
@@ -207,29 +179,17 @@ export default function FreezerDashboard() {
               />
             </div>
 
-            {/* Right Sidebar - Alerts and Chat */}
-            <div className="flex flex-col gap-4">
+            {/* Right Column - Alerts & Chat */}
+            <div className="w-80 flex-shrink-0 space-y-6">
               {/* Alert Panel */}
               <AlertPanel alerts={alerts} onSelectDevice={handleSelectDevice} />
 
-              {/* AI Chat - Fills remaining space */}
-              <div className="flex-1">
-                <FreezerChat fleetStatus={devices} />
-              </div>
+              {/* AI Chat */}
+              <FreezerChat fleetStatus={devices} />
             </div>
           </div>
         </main>
       </div>
-
-      {/* Footer */}
-      <footer className="border-t bg-white/80 backdrop-blur flex-shrink-0">
-        <div className="px-4 py-3">
-          <div className="flex items-center justify-between text-xs text-slate-500">
-            <div>Subzero Fleet Command v1.0</div>
-            <div>Monitoring {deviceList.length} units across the UK</div>
-          </div>
-        </div>
-      </footer>
 
       {/* Detail Modal */}
       <FreezerDetailModal
@@ -241,6 +201,30 @@ export default function FreezerDashboard() {
         }}
         getDeviceStatus={getDeviceStatus}
       />
+    </div>
+  );
+}
+
+// Stat Card Component
+interface StatCardProps {
+  icon: React.ElementType;
+  iconColor: string;
+  iconBg: string;
+  label: string;
+  value: string | number;
+  valueColor?: string;
+}
+
+function StatCard({ icon: Icon, iconColor, iconBg, label, value, valueColor = "text-slate-900" }: StatCardProps) {
+  return (
+    <div className="bg-white border p-4 flex items-center gap-3">
+      <div className={`p-2.5 ${iconBg}`}>
+        <Icon className={`h-5 w-5 ${iconColor}`} />
+      </div>
+      <div>
+        <div className="text-xs text-slate-500">{label}</div>
+        <div className={`text-xl font-bold ${valueColor}`}>{value}</div>
+      </div>
     </div>
   );
 }

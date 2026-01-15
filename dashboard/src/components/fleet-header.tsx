@@ -1,0 +1,73 @@
+"use client";
+
+import * as React from "react";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Bell, Search, Wifi, WifiOff, Activity } from "lucide-react";
+
+interface FleetHeaderProps {
+  title: string;
+  isConnected: boolean;
+  isOnline: boolean;
+  alertCount?: number;
+}
+
+export function FleetHeader({ title, isConnected, isOnline, alertCount = 0 }: FleetHeaderProps) {
+  return (
+    <header className="h-14 border-b bg-white flex items-center justify-between px-6 flex-shrink-0">
+      {/* Page Title */}
+      <h1 className="text-lg font-semibold text-slate-900">{title}</h1>
+
+      {/* Center - Search */}
+      <div className="flex-1 max-w-md mx-8">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Input
+            placeholder="Search units..."
+            className="pl-9 bg-slate-50 border-slate-200"
+          />
+        </div>
+      </div>
+
+      {/* Right Side - Notifications & Status */}
+      <div className="flex items-center gap-4">
+        {/* Notification Bell */}
+        <Button variant="ghost" size="icon" className="relative">
+          <Bell className="h-5 w-5 text-slate-600" />
+          {alertCount > 0 && (
+            <span className="absolute -top-1 -right-1 h-5 w-5 bg-red-500 text-white text-xs font-medium flex items-center justify-center">
+              {alertCount > 9 ? "9+" : alertCount}
+            </span>
+          )}
+        </Button>
+
+        {/* Status Badges */}
+        <div className="flex items-center gap-2">
+          {isConnected ? (
+            <Badge variant="outline" className="bg-emerald-50 text-emerald-600 border-emerald-200 gap-1.5">
+              <Wifi className="h-3 w-3" />
+              Connected
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200 gap-1.5">
+              <WifiOff className="h-3 w-3" />
+              Disconnected
+            </Badge>
+          )}
+          {isOnline ? (
+            <Badge variant="outline" className="bg-emerald-50 text-emerald-600 border-emerald-200 gap-1.5">
+              <Activity className="h-3 w-3" />
+              Live Data
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="bg-amber-50 text-amber-600 border-amber-200 gap-1.5">
+              <Activity className="h-3 w-3" />
+              Stale
+            </Badge>
+          )}
+        </div>
+      </div>
+    </header>
+  );
+}

@@ -91,15 +91,15 @@ export function FreezerChat({ fleetStatus }: FreezerChatProps) {
   ];
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
+    <Card className="flex flex-col h-full min-h-[400px]">
+      <CardHeader className="pb-3 flex-shrink-0">
         <CardTitle className="text-base flex items-center gap-2">
           <MessageSquare className="h-4 w-4" />
           Fleet AI Assistant
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        <ScrollArea className="h-[300px] pr-4" ref={scrollRef}>
+      <CardContent className="flex-1 flex flex-col">
+        <ScrollArea className="flex-1 pr-4" ref={scrollRef}>
           {messages.length === 0 ? (
             <div className="text-center py-8">
               <Bot className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />

@@ -1,7 +1,10 @@
 "use client";
 
 import * as React from "react";
+import { useState, useCallback } from "react";
+import Map, { Marker, NavigationControl, ScaleControl } from "react-map-gl/mapbox";
 import { FreezerReading } from "@/hooks/use-fleet-data";
+import "mapbox-gl/dist/mapbox-gl.css";
 
 interface FleetMapProps {
   devices: FreezerReading[];
@@ -10,13 +13,7 @@ interface FleetMapProps {
   getDeviceStatus: (device: FreezerReading) => "healthy" | "warning" | "critical";
 }
 
-// UK bounding box for positioning
-const UK_BOUNDS = {
-  minLat: 49.5,  // South
-  maxLat: 59.0,  // North
-  minLon: -8.0,  // West
-  maxLon: 2.0,   // East
-};
+const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
 
 export function FleetMap({
   devices,
@@ -24,152 +21,192 @@ export function FleetMap({
   onSelectDevice,
   getDeviceStatus,
 }: FleetMapProps) {
-  // Convert lat/lon to percentage position within the map
-  const toPosition = (lat: number, lon: number) => {
-    const x = ((lon - UK_BOUNDS.minLon) / (UK_BOUNDS.maxLon - UK_BOUNDS.minLon)) * 100;
-    const y = ((UK_BOUNDS.maxLat - lat) / (UK_BOUNDS.maxLat - UK_BOUNDS.minLat)) * 100;
-    return { x: Math.max(5, Math.min(95, x)), y: Math.max(5, Math.min(95, y)) };
-  };
+  const [viewState, setViewState] = useState({
+    longitude: -3.5,
+    latitude: 54.5,
+    zoom: 5.2,
+  });
 
   const statusColors = {
-    healthy: "bg-emerald-500",
-    warning: "bg-amber-500",
-    critical: "bg-red-500",
+    healthy: "#10b981", // Emerald
+    warning: "#f59e0b", // Amber
+    critical: "#ef4444", // Red
   };
 
-  const statusRingColors = {
-    healthy: "border-emerald-500",
-    warning: "border-amber-500",
-    critical: "border-red-500",
-  };
+  const handleMarkerClick = useCallback(
+    (deviceId: string) => {
+      onSelectDevice(selectedDevice === deviceId ? null : deviceId);
+    },
+    [selectedDevice, onSelectDevice]
+  );
+
+  if (!MAPBOX_TOKEN) {
+    return (
+      <div className="relative w-full h-full min-h-[400px] rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center">
+        <div className="text-slate-500 text-center p-4">
+          <div className="font-semibold mb-2">Mapbox token not configured</div>
+          <div className="text-xs">Add NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN to .env.local</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="relative w-full h-full min-h-[400px] rounded-lg overflow-hidden bg-blue-50">
-      {/* Grid pattern background */}
-      <div
-        className="absolute inset-0"
-        style={{
-          backgroundImage: `
-            linear-gradient(rgba(148, 163, 184, 0.1) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(148, 163, 184, 0.1) 1px, transparent 1px)
-          `,
-          backgroundSize: "40px 40px",
-        }}
-      />
-
-      {/* Simple UK outline using CSS */}
-      <svg
-        viewBox="0 0 100 100"
-        className="absolute inset-0 w-full h-full"
-        preserveAspectRatio="none"
+    <div className="relative w-full h-full min-h-[400px] rounded-lg overflow-hidden">
+      <Map
+        {...viewState}
+        onMove={(evt) => setViewState(evt.viewState)}
+        mapboxAccessToken={MAPBOX_TOKEN}
+        style={{ width: "100%", height: "100%" }}
+        mapStyle="mapbox://styles/mapbox/light-v11"
+        minZoom={3}
+        maxZoom={12}
       >
-        {/* Simplified UK shape */}
-        <path
-          d="M 45 15
-             Q 55 20 58 30
-             Q 60 35 55 45
-             Q 58 55 55 65
-             Q 52 75 48 80
-             Q 45 85 40 82
-             Q 35 78 38 70
-             Q 35 60 38 50
-             Q 35 40 40 30
-             Q 42 20 45 15
-             Z"
-          fill="white"
-          stroke="#94a3b8"
-          strokeWidth="0.5"
-        />
-        {/* Scotland */}
-        <path
-          d="M 42 10
-             Q 50 8 55 12
-             Q 58 18 52 22
-             Q 48 20 45 15
-             Q 42 12 42 10
-             Z"
-          fill="white"
-          stroke="#94a3b8"
-          strokeWidth="0.5"
-        />
-      </svg>
+        {/* Navigation controls */}
+        <NavigationControl position="top-right" />
+        <ScaleControl position="bottom-right" />
 
-      {/* Device markers */}
-      <div className="absolute inset-0">
+        {/* Device markers */}
         {devices.map((device) => {
-          const pos = toPosition(device.lat, device.lon);
           const status = getDeviceStatus(device);
           const isSelected = selectedDevice === device.device_id;
+          const color = statusColors[status];
 
           return (
-            <div
+            <Marker
               key={device.device_id}
-              className="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer group"
-              style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
-              onClick={() => onSelectDevice(isSelected ? null : device.device_id)}
+              longitude={device.lon}
+              latitude={device.lat}
+              anchor="center"
+              onClick={(e) => {
+                e.originalEvent.stopPropagation();
+                handleMarkerClick(device.device_id);
+              }}
             >
-              {/* Pulse animation for critical */}
-              {status === "critical" && (
-                <div
-                  className={`absolute inset-0 rounded-full ${statusRingColors[status]} border-2 animate-ping opacity-75`}
-                  style={{ width: "24px", height: "24px", margin: "-6px" }}
-                />
-              )}
-
-              {/* Marker dot */}
               <div
-                className={`
-                  relative w-3 h-3 rounded-full border-2 border-white shadow-lg
-                  ${statusColors[status]}
-                  ${isSelected ? "ring-2 ring-offset-2 ring-blue-500 w-4 h-4" : ""}
-                  transition-all duration-200 hover:scale-125
-                `}
-              />
+                className="relative cursor-pointer group"
+                style={{
+                  zIndex: status === "critical" ? 30 : status === "warning" ? 20 : 10,
+                }}
+              >
+                {/* Pulse ring for critical/warning */}
+                {(status === "critical" || status === "warning") && (
+                  <div
+                    className="absolute rounded-full animate-ping"
+                    style={{
+                      width: 32,
+                      height: 32,
+                      left: "50%",
+                      top: "50%",
+                      transform: "translate(-50%, -50%)",
+                      border: `2px solid ${color}`,
+                      opacity: 0.6,
+                    }}
+                  />
+                )}
 
-              {/* Tooltip */}
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-50">
-                <div className="bg-slate-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap shadow-lg">
-                  <div className="font-semibold">{device.device_id}</div>
-                  <div>{device.location_name}</div>
-                  <div className={status === "critical" ? "text-red-400" : status === "warning" ? "text-amber-400" : "text-emerald-400"}>
-                    {device.temp_cabinet.toFixed(1)}°C
-                  </div>
-                  {device.door_open && <div className="text-amber-400">🚪 Door Open</div>}
-                  {device.fault !== "NORMAL" && <div className="text-red-400">⚠️ {device.fault}</div>}
+                {/* Marker dot */}
+                <div
+                  className="relative rounded-full border-2 border-white shadow-lg transition-transform duration-200 hover:scale-150"
+                  style={{
+                    width: isSelected ? 20 : 14,
+                    height: isSelected ? 20 : 14,
+                    backgroundColor: color,
+                    boxShadow: isSelected
+                      ? `0 0 0 4px rgba(59, 130, 246, 0.5), 0 4px 6px rgba(0,0,0,0.2)`
+                      : `0 2px 4px rgba(0,0,0,0.2)`,
+                  }}
+                />
+
+                {/* City label */}
+                <div
+                  className="absolute whitespace-nowrap text-xs font-medium"
+                  style={{
+                    top: "100%",
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    marginTop: 4,
+                    color: "#334155",
+                    textShadow:
+                      "0 1px 2px rgba(255,255,255,0.9), 0 0 4px rgba(255,255,255,0.9)",
+                  }}
+                >
+                  {device.location_name}
                 </div>
-                {/* Tooltip arrow */}
-                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900" />
+
+                {/* Tooltip on hover */}
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 hidden group-hover:block z-50">
+                  <div
+                    className="text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap shadow-xl"
+                    style={{ backgroundColor: "#1e293b" }}
+                  >
+                    <div className="font-bold mb-1">{device.device_id}</div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="w-2 h-2 rounded-full"
+                        style={{ backgroundColor: color }}
+                      />
+                      <span style={{ color: color }}>
+                        {device.temp_cabinet.toFixed(1)}°C
+                      </span>
+                    </div>
+                    {device.door_open && (
+                      <div className="text-amber-400 mt-1">Door Open</div>
+                    )}
+                    {device.frost_level > 0.5 && (
+                      <div className="text-blue-400 mt-1">
+                        High Frost: {(device.frost_level * 100).toFixed(0)}%
+                      </div>
+                    )}
+                    {device.fault !== "NORMAL" && (
+                      <div className="text-red-400 mt-1">{device.fault}</div>
+                    )}
+                  </div>
+                  <div
+                    className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent"
+                    style={{ borderTopColor: "#1e293b" }}
+                  />
+                </div>
               </div>
-            </div>
+            </Marker>
           );
         })}
-      </div>
+      </Map>
 
-      {/* Legend */}
-      <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur rounded-lg p-3 shadow-md text-xs">
-        <div className="font-semibold mb-2 text-slate-700">Fleet Status</div>
-        <div className="flex items-center gap-2 mb-1">
-          <div className="w-3 h-3 rounded-full bg-emerald-500" />
-          <span className="text-slate-600">Healthy</span>
-        </div>
-        <div className="flex items-center gap-2 mb-1">
-          <div className="w-3 h-3 rounded-full bg-amber-500" />
-          <span className="text-slate-600">Warning</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full bg-red-500" />
-          <span className="text-slate-600">Critical</span>
+      {/* Legend overlay */}
+      <div className="absolute bottom-4 left-4 bg-white/95 backdrop-blur rounded-lg p-3 shadow-lg text-xs border border-slate-200 pointer-events-none">
+        <div className="font-semibold mb-2 text-slate-800">Fleet Status</div>
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <div
+              className="w-3 h-3 rounded-full"
+              style={{ backgroundColor: statusColors.healthy }}
+            />
+            <span className="text-slate-600">Healthy</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div
+              className="w-3 h-3 rounded-full"
+              style={{ backgroundColor: statusColors.warning }}
+            />
+            <span className="text-slate-600">Warning</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div
+              className="w-3 h-3 rounded-full"
+              style={{ backgroundColor: statusColors.critical }}
+            />
+            <span className="text-slate-600">Critical</span>
+          </div>
         </div>
       </div>
 
       {/* Stats overlay */}
-      <div className="absolute top-4 right-4 bg-white/90 backdrop-blur rounded-lg p-3 shadow-md text-xs">
-        <div className="font-semibold mb-1 text-slate-700">
-          {devices.length} Units
+      <div className="absolute top-4 left-4 bg-white/95 backdrop-blur rounded-lg p-3 shadow-lg text-xs border border-slate-200 pointer-events-none">
+        <div className="font-semibold text-slate-800">
+          {devices.length} Units Online
         </div>
-        <div className="text-slate-500">
-          Click a marker for details
-        </div>
+        <div className="text-slate-500 mt-1">Click a marker for details</div>
       </div>
     </div>
   );

@@ -6,6 +6,7 @@ import { FreezerReading } from "@/hooks/use-fleet-data";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DoorOpen, Snowflake, MapPin, AlertTriangle, CheckCircle } from "lucide-react";
+import { ExportControls } from "@/components/export-controls";
 
 interface FleetStatusTableProps {
   devices: FreezerReading[];
@@ -93,10 +94,13 @@ export function FleetStatusTable({
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-base flex items-center gap-2">
-          <Snowflake className="h-4 w-4" />
-          Fleet Status by Region
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Snowflake className="h-4 w-4" />
+            Fleet Status by Region
+          </CardTitle>
+          <ExportControls />
+        </div>
       </CardHeader>
       <CardContent className="p-0">
         {locationGroups.length === 0 ? (

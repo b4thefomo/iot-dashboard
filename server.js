@@ -5,6 +5,187 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const multer = require('multer');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const PDFDocument = require('pdfkit');
+const { createClient } = require('@supabase/supabase-js');
+
+// Initialize Supabase client
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+let supabase = null;
+
+if (SUPABASE_URL && SUPABASE_KEY) {
+    supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+    console.log("✅ Supabase client initialized:", SUPABASE_URL);
+} else {
+    console.log("⚠️ Supabase not initialized - credentials missing");
+}
+
+// ==================== SUPABASE HELPER FUNCTIONS ====================
+
+// Ensure device exists in database (auto-register new devices)
+async function ensureDeviceExists(deviceData) {
+    if (!supabase) return null;
+
+    try {
+        // Check if device exists
+        const { data: existing } = await supabase
+            .from('devices')
+            .select('id')
+            .eq('device_id', deviceData.device_id)
+            .single();
+
+        if (existing) return existing;
+
+        // Get location ID based on location name
+        const { data: location } = await supabase
+            .from('locations')
+            .select('id')
+            .eq('name', deviceData.location_name)
+            .single();
+
+        // Create new device
+        const { data: newDevice, error } = await supabase
+            .from('devices')
+            .insert({
+                device_id: deviceData.device_id,
+                location_id: location?.id || null,
+                status: 'active'
+            })
+            .select()
+            .single();
+
+        if (error) {
+            console.error("❌ Error creating device:", error.message);
+            return null;
+        }
+
+        console.log(`📝 Device ${deviceData.device_id} registered in Supabase`);
+        return newDevice;
+    } catch (error) {
+        console.error("❌ Supabase device error:", error.message);
+        return null;
+    }
+}
+
+// Store freezer reading in Supabase
+async function storeReading(readingData) {
+    if (!supabase) return null;
+
+    try {
+        const { data, error } = await supabase
+            .from('readings')
+            .insert({
+                device_id: readingData.device_id,
+                timestamp: readingData.timestamp,
+                temp_cabinet: readingData.temp_cabinet,
+                temp_ambient: readingData.temp_ambient,
+                compressor_power_w: readingData.compressor_power_w,
+                compressor_freq_hz: readingData.compressor_freq_hz,
+                frost_level: readingData.frost_level,
+                cop: readingData.cop,
+                door_open: readingData.door_open,
+                defrost_on: readingData.defrost_on,
+                fault: readingData.fault,
+                fault_id: readingData.fault_id
+            })
+            .select()
+            .single();
+
+        if (error) {
+            console.error("❌ Error storing reading:", error.message);
+            return null;
+        }
+
+        return data;
+    } catch (error) {
+        console.error("❌ Supabase reading error:", error.message);
+        return null;
+    }
+}
+
+// Create alert in Supabase
+async function createAlert(deviceId, type, severity, message, readingId = null) {
+    if (!supabase) return null;
+
+    try {
+        const { data, error } = await supabase
+            .from('alerts')
+            .insert({
+                device_id: deviceId,
+                type,
+                severity,
+                message,
+                reading_id: readingId
+            })
+            .select()
+            .single();
+
+        if (error) {
+            console.error("❌ Error creating alert:", error.message);
+            return null;
+        }
+
+        console.log(`🚨 Alert created: ${type} for ${deviceId}`);
+        return data;
+    } catch (error) {
+        console.error("❌ Supabase alert error:", error.message);
+        return null;
+    }
+}
+
+// Check conditions and create alerts if needed
+async function checkAndCreateAlerts(readingData, readingId) {
+    if (!supabase) return;
+
+    const alerts = [];
+
+    // Critical temperature
+    if (readingData.temp_cabinet > -5) {
+        alerts.push({
+            type: 'TEMP_CRITICAL',
+            severity: 'critical',
+            message: `Critical temperature: ${readingData.temp_cabinet}°C (should be below -15°C)`
+        });
+    } else if (readingData.temp_cabinet > -10) {
+        alerts.push({
+            type: 'TEMP_HIGH',
+            severity: 'warning',
+            message: `High temperature: ${readingData.temp_cabinet}°C (should be below -15°C)`
+        });
+    }
+
+    // Door open
+    if (readingData.door_open) {
+        alerts.push({
+            type: 'DOOR_OPEN',
+            severity: 'warning',
+            message: 'Freezer door is open'
+        });
+    }
+
+    // Fault detected
+    if (readingData.fault && readingData.fault !== 'NORMAL') {
+        alerts.push({
+            type: 'FAULT',
+            severity: 'critical',
+            message: `Fault detected: ${readingData.fault}`
+        });
+    }
+
+    // High frost
+    if (readingData.frost_level > 0.5) {
+        alerts.push({
+            type: 'FROST_HIGH',
+            severity: 'warning',
+            message: `High frost level: ${(readingData.frost_level * 100).toFixed(0)}%`
+        });
+    }
+
+    // Create alerts in database
+    for (const alert of alerts) {
+        await createAlert(readingData.device_id, alert.type, alert.severity, alert.message, readingId);
+    }
+}
 
 // Configure multer for firmware uploads (store in memory)
 const upload = multer({ storage: multer.memoryStorage() });
@@ -173,6 +354,26 @@ app.post('/api/data', (req, res) => {
         io.emit('freezerData', normalizedFreezer);
         io.emit('fleetUpdate', fleetStatus);
         addToMasterHistory(normalizedFreezer, 'freezer');
+
+        // Store in Supabase (async, non-blocking)
+        if (supabase) {
+            (async () => {
+                try {
+                    // Ensure device exists
+                    await ensureDeviceExists(normalizedFreezer);
+
+                    // Store reading
+                    const reading = await storeReading(normalizedFreezer);
+
+                    // Check and create alerts if conditions are met
+                    if (reading) {
+                        await checkAndCreateAlerts(normalizedFreezer, reading.id);
+                    }
+                } catch (err) {
+                    console.error("❌ Supabase storage error:", err.message);
+                }
+            })();
+        }
 
     } else {
         // Legacy support: route based on fields present
@@ -596,6 +797,288 @@ app.get('/api/fleet/summary', (req, res) => {
             highFrost: devices.filter(d => d.frost_level > 0.5).length
         }
     });
+});
+
+// ==================== FLEET EXPORT ENDPOINTS ====================
+
+// CSV Export - Download fleet data as spreadsheet
+app.get('/api/fleet/export/csv', (req, res) => {
+    const range = req.query.range || 'current'; // current, 24h, 7d, 30d
+    const devices = Object.values(fleetStatus);
+
+    if (devices.length === 0) {
+        return res.status(404).json({ error: "No fleet data available" });
+    }
+
+    // Generate filename with timestamp
+    const timestamp = new Date().toISOString().split('T')[0];
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="fleet-export-${timestamp}.csv"`);
+
+    // CSV header
+    const headers = [
+        'device_id', 'location_name', 'lat', 'lon', 'temp_cabinet', 'temp_ambient',
+        'compressor_power_w', 'compressor_freq_hz', 'frost_level', 'cop',
+        'door_open', 'defrost_on', 'fault', 'status', 'timestamp'
+    ];
+
+    let csvContent = headers.join(',') + '\n';
+
+    // Helper to determine status
+    const getStatus = (d) => {
+        if (d.fault !== 'NORMAL' || d.temp_cabinet > -5) return 'CRITICAL';
+        if (d.door_open || d.frost_level > 0.5 || d.temp_cabinet > -10) return 'WARNING';
+        return 'HEALTHY';
+    };
+
+    // If range is 'current', export only latest readings
+    if (range === 'current') {
+        devices.forEach(d => {
+            const row = [
+                d.device_id,
+                `"${d.location_name}"`,
+                d.lat,
+                d.lon,
+                d.temp_cabinet,
+                d.temp_ambient,
+                d.compressor_power_w,
+                d.compressor_freq_hz,
+                d.frost_level,
+                d.cop,
+                d.door_open,
+                d.defrost_on,
+                d.fault,
+                getStatus(d),
+                d.timestamp
+            ];
+            csvContent += row.join(',') + '\n';
+        });
+    } else {
+        // Export historical data
+        const now = Date.now();
+        const rangeMs = {
+            '24h': 24 * 60 * 60 * 1000,
+            '7d': 7 * 24 * 60 * 60 * 1000,
+            '30d': 30 * 24 * 60 * 60 * 1000
+        };
+        const cutoff = now - (rangeMs[range] || rangeMs['24h']);
+
+        Object.keys(freezerHistory).forEach(deviceId => {
+            const history = freezerHistory[deviceId] || [];
+            history.filter(d => new Date(d.timestamp).getTime() > cutoff).forEach(d => {
+                const row = [
+                    d.device_id,
+                    `"${d.location_name}"`,
+                    d.lat,
+                    d.lon,
+                    d.temp_cabinet,
+                    d.temp_ambient,
+                    d.compressor_power_w,
+                    d.compressor_freq_hz,
+                    d.frost_level,
+                    d.cop,
+                    d.door_open,
+                    d.defrost_on,
+                    d.fault,
+                    getStatus(d),
+                    d.timestamp
+                ];
+                csvContent += row.join(',') + '\n';
+            });
+        });
+    }
+
+    res.send(csvContent);
+});
+
+// PDF Report - Generate professional fleet status report
+app.get('/api/fleet/export/pdf', (req, res) => {
+    const devices = Object.values(fleetStatus);
+
+    if (devices.length === 0) {
+        return res.status(404).json({ error: "No fleet data available" });
+    }
+
+    // Generate filename with timestamp
+    const timestamp = new Date().toISOString().split('T')[0];
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="fleet-report-${timestamp}.pdf"`);
+
+    // Create PDF document
+    const doc = new PDFDocument({ margin: 50 });
+    doc.pipe(res);
+
+    // Helper functions
+    const getStatus = (d) => {
+        if (d.fault !== 'NORMAL' || d.temp_cabinet > -5) return 'CRITICAL';
+        if (d.door_open || d.frost_level > 0.5 || d.temp_cabinet > -10) return 'WARNING';
+        return 'HEALTHY';
+    };
+
+    // Calculate summary stats
+    const healthyCount = devices.filter(d => getStatus(d) === 'HEALTHY').length;
+    const warningCount = devices.filter(d => getStatus(d) === 'WARNING').length;
+    const criticalCount = devices.filter(d => getStatus(d) === 'CRITICAL').length;
+    const temps = devices.map(d => d.temp_cabinet);
+    const avgTemp = temps.reduce((a, b) => a + b, 0) / temps.length;
+    const powers = devices.map(d => d.compressor_power_w);
+    const totalPower = powers.reduce((a, b) => a + b, 0);
+
+    // --- Cover Page ---
+    doc.fontSize(32).font('Helvetica-Bold').text('SUBZERO', { align: 'center' });
+    doc.fontSize(24).font('Helvetica').text('Fleet Status Report', { align: 'center' });
+    doc.moveDown(2);
+    doc.fontSize(14).text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' });
+    doc.moveDown(0.5);
+    doc.fontSize(12).fillColor('#666').text('Real-time Freezer Fleet Monitoring System', { align: 'center' });
+
+    doc.addPage();
+
+    // --- Executive Summary ---
+    doc.fontSize(20).fillColor('#000').font('Helvetica-Bold').text('Executive Summary');
+    doc.moveDown(0.5);
+    doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke('#3b82f6');
+    doc.moveDown(1);
+
+    doc.fontSize(12).font('Helvetica');
+
+    // Summary boxes
+    const summaryY = doc.y;
+
+    // Total Units
+    doc.fillColor('#1e293b').text('Total Units', 50, summaryY);
+    doc.fontSize(28).font('Helvetica-Bold').text(devices.length.toString(), 50, summaryY + 15);
+
+    // Healthy
+    doc.fontSize(12).font('Helvetica').fillColor('#10b981').text('Healthy', 150, summaryY);
+    doc.fontSize(28).font('Helvetica-Bold').text(healthyCount.toString(), 150, summaryY + 15);
+
+    // Warning
+    doc.fontSize(12).font('Helvetica').fillColor('#f59e0b').text('Warning', 250, summaryY);
+    doc.fontSize(28).font('Helvetica-Bold').text(warningCount.toString(), 250, summaryY + 15);
+
+    // Critical
+    doc.fontSize(12).font('Helvetica').fillColor('#ef4444').text('Critical', 350, summaryY);
+    doc.fontSize(28).font('Helvetica-Bold').text(criticalCount.toString(), 350, summaryY + 15);
+
+    doc.moveDown(4);
+    doc.fillColor('#000');
+
+    // Fleet Stats
+    doc.fontSize(14).font('Helvetica-Bold').text('Fleet Statistics');
+    doc.moveDown(0.5);
+    doc.fontSize(11).font('Helvetica');
+    doc.text(`Average Temperature: ${avgTemp.toFixed(1)}°C`);
+    doc.text(`Total Power Consumption: ${totalPower.toFixed(0)}W`);
+    doc.text(`Average Power per Unit: ${(totalPower / devices.length).toFixed(0)}W`);
+
+    doc.moveDown(2);
+
+    // --- Fleet Status Table ---
+    doc.fontSize(20).font('Helvetica-Bold').text('Fleet Status by Unit');
+    doc.moveDown(0.5);
+    doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke('#3b82f6');
+    doc.moveDown(1);
+
+    // Table header
+    const tableTop = doc.y;
+    const colWidths = [100, 90, 60, 60, 60, 60, 65];
+    const headers = ['Device ID', 'Location', 'Temp', 'Power', 'Frost', 'Door', 'Status'];
+
+    doc.fontSize(10).font('Helvetica-Bold').fillColor('#475569');
+    let xPos = 50;
+    headers.forEach((header, i) => {
+        doc.text(header, xPos, tableTop, { width: colWidths[i], align: 'left' });
+        xPos += colWidths[i];
+    });
+
+    doc.moveDown(0.5);
+    doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke('#e2e8f0');
+    doc.moveDown(0.5);
+
+    // Table rows
+    doc.font('Helvetica').fontSize(9);
+
+    // Sort devices: critical first, then warning, then healthy
+    const sortedDevices = [...devices].sort((a, b) => {
+        const statusOrder = { 'CRITICAL': 0, 'WARNING': 1, 'HEALTHY': 2 };
+        return statusOrder[getStatus(a)] - statusOrder[getStatus(b)];
+    });
+
+    sortedDevices.forEach((d, idx) => {
+        const status = getStatus(d);
+        const statusColor = status === 'CRITICAL' ? '#ef4444' : status === 'WARNING' ? '#f59e0b' : '#10b981';
+
+        // Check if we need a new page
+        if (doc.y > 700) {
+            doc.addPage();
+            doc.y = 50;
+        }
+
+        const rowY = doc.y;
+        xPos = 50;
+
+        doc.fillColor('#1e293b');
+        doc.text(d.device_id, xPos, rowY, { width: colWidths[0] }); xPos += colWidths[0];
+        doc.text(d.location_name, xPos, rowY, { width: colWidths[1] }); xPos += colWidths[1];
+
+        // Temperature with color coding
+        const tempColor = d.temp_cabinet > -10 ? '#ef4444' : d.temp_cabinet > -15 ? '#f59e0b' : '#1e293b';
+        doc.fillColor(tempColor).text(`${d.temp_cabinet.toFixed(1)}°C`, xPos, rowY, { width: colWidths[2] }); xPos += colWidths[2];
+
+        doc.fillColor('#1e293b');
+        doc.text(`${d.compressor_power_w.toFixed(0)}W`, xPos, rowY, { width: colWidths[3] }); xPos += colWidths[3];
+        doc.text(`${(d.frost_level * 100).toFixed(0)}%`, xPos, rowY, { width: colWidths[4] }); xPos += colWidths[4];
+        doc.text(d.door_open ? 'OPEN' : 'Closed', xPos, rowY, { width: colWidths[5] }); xPos += colWidths[5];
+
+        doc.fillColor(statusColor).text(status, xPos, rowY, { width: colWidths[6] });
+
+        doc.moveDown(0.8);
+    });
+
+    doc.moveDown(2);
+
+    // --- Alerts Section ---
+    const alertDevices = devices.filter(d => getStatus(d) !== 'HEALTHY');
+
+    if (alertDevices.length > 0) {
+        if (doc.y > 600) doc.addPage();
+
+        doc.fontSize(20).font('Helvetica-Bold').fillColor('#000').text('Active Alerts');
+        doc.moveDown(0.5);
+        doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke('#ef4444');
+        doc.moveDown(1);
+
+        alertDevices.forEach(d => {
+            const status = getStatus(d);
+            const bgColor = status === 'CRITICAL' ? '#fef2f2' : '#fffbeb';
+            const borderColor = status === 'CRITICAL' ? '#ef4444' : '#f59e0b';
+
+            // Alert box
+            doc.rect(50, doc.y, 495, 50).fillAndStroke(bgColor, borderColor);
+
+            doc.fillColor('#1e293b').fontSize(11).font('Helvetica-Bold');
+            doc.text(`${d.device_id} - ${d.location_name}`, 60, doc.y - 40);
+
+            doc.fontSize(10).font('Helvetica').fillColor('#475569');
+            const issues = [];
+            if (d.fault !== 'NORMAL') issues.push(`Fault: ${d.fault}`);
+            if (d.temp_cabinet > -10) issues.push(`High Temp: ${d.temp_cabinet.toFixed(1)}°C`);
+            if (d.door_open) issues.push('Door Open');
+            if (d.frost_level > 0.5) issues.push(`High Frost: ${(d.frost_level * 100).toFixed(0)}%`);
+
+            doc.text(issues.join(' | '), 60, doc.y - 20);
+            doc.moveDown(3);
+        });
+    }
+
+    // --- Footer ---
+    doc.moveDown(2);
+    doc.fontSize(9).fillColor('#94a3b8').font('Helvetica');
+    doc.text('Subzero Fleet Command - Real-time Freezer Monitoring System', 50, 750, { align: 'center' });
+    doc.text(`Report generated at ${new Date().toISOString()}`, { align: 'center' });
+
+    doc.end();
 });
 
 // ==================== FIRMWARE OTA ENDPOINTS ====================

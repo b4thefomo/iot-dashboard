@@ -37,3 +37,4 @@ datasets/
 
 # Python virtual environment
 simulator/venv/
+supabase/.temp/

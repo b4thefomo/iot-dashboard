@@ -121,6 +121,13 @@ export function FreezerChat({ fleetStatus }: FreezerChatProps) {
 
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+
+      // Build conversation history for context
+      const conversationHistory = messages.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+      }));
+
       const response = await fetch(`${apiUrl}/api/freezer/chat`, {
         method: "POST",
         headers: {
@@ -129,6 +136,7 @@ export function FreezerChat({ fleetStatus }: FreezerChatProps) {
         body: JSON.stringify({
           message: userMessage,
           fleetStatus,
+          conversationHistory,
         }),
       });
 

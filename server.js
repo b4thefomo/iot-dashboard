@@ -737,7 +737,7 @@ app.get('/api/freezer/:device_id/history', (req, res) => {
 
 // Fleet AI chat
 app.post('/api/freezer/chat', async (req, res) => {
-    const { message } = req.body;
+    const { message, conversationHistory = [] } = req.body;
     if (!message) return res.status(400).json({ error: "Message is required" });
 
     if (!model) {
@@ -746,6 +746,22 @@ app.post('/api/freezer/chat', async (req, res) => {
 
     try {
         const context = buildFleetContext();
+
+        // Format conversation history for context
+        let historyContext = "";
+        if (conversationHistory.length > 0) {
+            historyContext = "\n\nPrevious Conversation:\n" +
+                conversationHistory.map(msg =>
+                    `${msg.role === 'user' ? 'Operator' : 'Assistant'}: ${msg.content}`
+                ).join('\n\n') +
+                "\n\n---\n";
+        }
+
+        const isFollowUp = conversationHistory.length > 0;
+        const followUpInstruction = isFollowUp
+            ? `\n\nIMPORTANT - FOLLOW-UP CONTEXT: This is message #${conversationHistory.length + 1} in an ongoing conversation. The operator's current message "${message}" is responding to your previous answer above. If they say "yes", "ok", "sure", "go ahead", "please do", "show me", etc., they are confirming or requesting what you offered in your last response. DO NOT repeat the same analysis or ask again - proceed directly with the specific action, data, or information you previously offered to provide.`
+            : '';
+
         const prompt = `You are an AI assistant for the Subzero freezer fleet monitoring system. You help operators monitor and diagnose issues across a fleet of commercial freezers.
 
 Your responsibilities:
@@ -757,8 +773,9 @@ Your responsibilities:
 
 Current Fleet Context:
 ${context}
-
-Operator Question: ${message}
+${historyContext}
+Current Operator Message: ${message}
+${followUpInstruction}
 
 Provide a helpful, actionable response. If there are critical issues, prioritize them. Use the freezer IDs and locations when referring to specific units.
 

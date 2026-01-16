@@ -105,27 +105,27 @@ export default function FreezerDashboard() {
                 />
                 <StatCard
                   icon={CheckCircle}
-                  iconColor="text-emerald-500"
-                  iconBg="bg-emerald-50"
+                  iconColor="text-teal-500"
+                  iconBg="bg-teal-50"
                   label="Healthy"
                   value={healthyCount}
-                  valueColor="text-emerald-600"
+                  valueColor="text-teal-600"
                 />
                 <StatCard
                   icon={AlertTriangle}
-                  iconColor="text-amber-500"
-                  iconBg="bg-amber-50"
+                  iconColor="text-indigo-500"
+                  iconBg="bg-indigo-50"
                   label="Warning"
                   value={warningCount}
-                  valueColor="text-amber-600"
+                  valueColor="text-indigo-600"
                 />
                 <StatCard
                   icon={AlertTriangle}
-                  iconColor="text-red-500"
-                  iconBg="bg-red-50"
+                  iconColor="text-violet-500"
+                  iconBg="bg-violet-50"
                   label="Critical"
                   value={criticalCount}
-                  valueColor="text-red-600"
+                  valueColor="text-violet-600"
                 />
                 <StatCard
                   icon={Thermometer}
@@ -133,12 +133,12 @@ export default function FreezerDashboard() {
                   iconBg="bg-blue-50"
                   label="Avg Temp"
                   value={`${avgTemp.toFixed(1)}°C`}
-                  valueColor={avgTemp > -10 ? "text-red-600" : "text-slate-900"}
+                  valueColor={avgTemp > -10 ? "text-violet-600" : "text-slate-900"}
                 />
                 <StatCard
                   icon={Zap}
-                  iconColor="text-emerald-500"
-                  iconBg="bg-emerald-50"
+                  iconColor="text-teal-500"
+                  iconBg="bg-teal-50"
                   label="Avg Power"
                   value={`${avgPower.toFixed(0)}W`}
                 />

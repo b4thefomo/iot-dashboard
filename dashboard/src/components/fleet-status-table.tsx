@@ -40,9 +40,9 @@ export function FleetStatusTable({
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
   const statusColors = {
-    healthy: "bg-emerald-500",
-    warning: "bg-amber-500",
-    critical: "bg-red-500",
+    healthy: "bg-teal-400",
+    warning: "bg-indigo-400",
+    critical: "bg-violet-500",
   };
 
   // Group devices by location
@@ -101,20 +101,20 @@ export function FleetStatusTable({
   const getStatusBadge = (group: LocationGroup) => {
     if (group.criticalCount > 0) {
       return (
-        <Badge className="bg-red-100 text-red-600 border-0">
+        <Badge className="bg-violet-100 text-violet-600 border-0">
           {group.criticalCount} Critical
         </Badge>
       );
     }
     if (group.warningCount > 0) {
       return (
-        <Badge className="bg-amber-100 text-amber-600 border-0">
+        <Badge className="bg-indigo-100 text-indigo-600 border-0">
           {group.warningCount} Warning
         </Badge>
       );
     }
     return (
-      <Badge className="bg-emerald-100 text-emerald-600 border-0">
+      <Badge className="bg-teal-100 text-teal-600 border-0">
         All Healthy
       </Badge>
     );
@@ -227,10 +227,10 @@ export function FleetStatusTable({
                               <td
                                 className={`px-4 py-2.5 font-mono ${
                                   device.temp_cabinet > -10
-                                    ? "text-red-600"
+                                    ? "text-violet-600"
                                     : device.temp_cabinet > -15
-                                    ? "text-amber-600"
-                                    : "text-cyan-600"
+                                    ? "text-indigo-500"
+                                    : "text-teal-600"
                                 }`}
                               >
                                 {device.temp_cabinet.toFixed(1)}°C
@@ -244,8 +244,8 @@ export function FleetStatusTable({
                                     <div
                                       className={`h-full ${
                                         device.frost_level > 0.5
-                                          ? "bg-amber-500"
-                                          : "bg-emerald-500"
+                                          ? "bg-indigo-400"
+                                          : "bg-teal-400"
                                       }`}
                                       style={{ width: `${device.frost_level * 100}%` }}
                                     />
@@ -253,7 +253,7 @@ export function FleetStatusTable({
                                   <span
                                     className={`text-xs ${
                                       device.frost_level > 0.5
-                                        ? "text-amber-600"
+                                        ? "text-indigo-600"
                                         : "text-slate-500"
                                     }`}
                                   >
@@ -263,7 +263,7 @@ export function FleetStatusTable({
                               </td>
                               <td className="px-4 py-2.5 text-slate-600">
                                 {device.door_open ? (
-                                  <span className="text-amber-600">Open</span>
+                                  <span className="text-indigo-600">Open</span>
                                 ) : (
                                   "Closed"
                                 )}

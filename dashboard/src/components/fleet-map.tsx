@@ -28,9 +28,9 @@ export function FleetMap({
   });
 
   const statusColors = {
-    healthy: "#10b981", // Emerald
-    warning: "#f59e0b", // Amber
-    critical: "#ef4444", // Red
+    healthy: "#2dd4bf", // Teal
+    warning: "#818cf8", // Indigo
+    critical: "#8b5cf6", // Violet
   };
 
   const handleMarkerClick = useCallback(
@@ -151,15 +151,15 @@ export function FleetMap({
                       </span>
                     </div>
                     {device.door_open && (
-                      <div className="text-amber-400 mt-1">Door Open</div>
+                      <div className="text-indigo-300 mt-1">Door Open</div>
                     )}
                     {device.frost_level > 0.5 && (
-                      <div className="text-blue-400 mt-1">
+                      <div className="text-cyan-300 mt-1">
                         High Frost: {(device.frost_level * 100).toFixed(0)}%
                       </div>
                     )}
                     {device.fault !== "NORMAL" && (
-                      <div className="text-red-400 mt-1">{device.fault}</div>
+                      <div className="text-violet-300 mt-1">{device.fault}</div>
                     )}
                   </div>
                   <div

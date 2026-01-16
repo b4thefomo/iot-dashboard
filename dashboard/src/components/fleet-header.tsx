@@ -92,7 +92,7 @@ export function FleetHeader({
           <Button variant="ghost" size="icon" className="relative">
             <Bell className="h-5 w-5 text-slate-600" />
             {alertCount > 0 && (
-              <span className="absolute -top-1 -right-1 h-5 w-5 bg-red-500 text-white text-xs font-medium flex items-center justify-center">
+              <span className="absolute -top-1 -right-1 h-5 w-5 bg-violet-500 text-white text-xs font-medium flex items-center justify-center">
                 {alertCount > 9 ? "9+" : alertCount}
               </span>
             )}
@@ -101,23 +101,23 @@ export function FleetHeader({
           {/* Status Badges */}
           <div className="flex items-center gap-2">
             {isConnected ? (
-              <Badge variant="outline" className="bg-emerald-50 text-emerald-600 border-emerald-200 gap-1.5">
+              <Badge variant="outline" className="bg-teal-50 text-teal-600 border-teal-200 gap-1.5">
                 <Wifi className="h-3 w-3" />
                 Connected
               </Badge>
             ) : (
-              <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200 gap-1.5">
+              <Badge variant="outline" className="bg-violet-50 text-violet-600 border-violet-200 gap-1.5">
                 <WifiOff className="h-3 w-3" />
                 Disconnected
               </Badge>
             )}
             {isOnline ? (
-              <Badge variant="outline" className="bg-emerald-50 text-emerald-600 border-emerald-200 gap-1.5">
+              <Badge variant="outline" className="bg-teal-50 text-teal-600 border-teal-200 gap-1.5">
                 <Activity className="h-3 w-3" />
                 Live Data
               </Badge>
             ) : (
-              <Badge variant="outline" className="bg-amber-50 text-amber-600 border-amber-200 gap-1.5">
+              <Badge variant="outline" className="bg-indigo-50 text-indigo-600 border-indigo-200 gap-1.5">
                 <Activity className="h-3 w-3" />
                 Stale
               </Badge>

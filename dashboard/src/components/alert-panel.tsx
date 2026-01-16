@@ -21,9 +21,9 @@ export function AlertPanel({ alerts, onSelectDevice }: AlertPanelProps) {
   };
 
   const getAlertColor = (device: FreezerReading) => {
-    if (device.fault !== "NORMAL" || device.temp_cabinet > -5) return "text-red-500";
-    if (device.door_open) return "text-amber-500";
-    return "text-amber-500";
+    if (device.fault !== "NORMAL" || device.temp_cabinet > -5) return "text-violet-600";
+    if (device.door_open) return "text-indigo-500";
+    return "text-indigo-500";
   };
 
   return (
@@ -31,11 +31,11 @@ export function AlertPanel({ alerts, onSelectDevice }: AlertPanelProps) {
       {/* Header */}
       <div className="px-4 py-3 border-b flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4 text-amber-500" />
+          <AlertTriangle className="h-4 w-4 text-indigo-500" />
           <h3 className="font-semibold text-slate-900">Active Alerts</h3>
         </div>
         {alerts.length > 0 && (
-          <Badge className="bg-amber-100 text-amber-600 border-0">
+          <Badge className="bg-indigo-100 text-indigo-600 border-0">
             {alerts.length}
           </Badge>
         )}

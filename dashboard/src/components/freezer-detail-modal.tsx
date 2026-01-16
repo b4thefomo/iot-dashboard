@@ -93,9 +93,9 @@ export function FreezerDetailModal({
 
   const status = getDeviceStatus(device);
   const statusColors = {
-    healthy: "bg-emerald-100 text-emerald-700 border-emerald-300",
-    warning: "bg-amber-100 text-amber-700 border-amber-300",
-    critical: "bg-red-100 text-red-700 border-red-300",
+    healthy: "bg-teal-100 text-teal-700 border-teal-300",
+    warning: "bg-indigo-100 text-indigo-700 border-indigo-300",
+    critical: "bg-violet-100 text-violet-700 border-violet-300",
   };
 
   // Find anomalies in history
@@ -136,9 +136,9 @@ export function FreezerDetailModal({
               <div
                 className={`font-semibold text-lg ${
                   device.temp_cabinet > -10
-                    ? "text-red-600"
+                    ? "text-violet-600"
                     : device.temp_cabinet > -15
-                    ? "text-amber-600"
+                    ? "text-indigo-500"
                     : "text-slate-900"
                 }`}
               >
@@ -172,12 +172,12 @@ export function FreezerDetailModal({
 
         {/* Current Alerts */}
         {(device.door_open || device.frost_level > 0.5 || device.fault !== "NORMAL") && (
-          <div className="mt-4 p-3 bg-amber-50 border border-amber-200 ">
-            <div className="flex items-center gap-2 text-amber-700 font-medium mb-2">
+          <div className="mt-4 p-3 bg-indigo-50 border border-indigo-200 ">
+            <div className="flex items-center gap-2 text-indigo-700 font-medium mb-2">
               <AlertTriangle className="h-4 w-4" />
               Active Issues
             </div>
-            <div className="space-y-1 text-sm text-amber-600">
+            <div className="space-y-1 text-sm text-indigo-600">
               {device.door_open && (
                 <div className="flex items-center gap-2">
                   <DoorOpen className="h-4 w-4" />
@@ -312,7 +312,7 @@ export function FreezerDetailModal({
         {anomalies.length > 0 && (
           <div className="mt-6">
             <h3 className="font-semibold mb-3 flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              <AlertTriangle className="h-4 w-4 text-indigo-500" />
               Recent Anomalies ({anomalies.length})
             </h3>
             <div className="space-y-2 max-h-[150px] overflow-y-auto">
@@ -324,17 +324,17 @@ export function FreezerDetailModal({
                   <span className="text-slate-600">{point.time}</span>
                   <div className="flex items-center gap-3">
                     {point.temp_cabinet > -10 && (
-                      <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200">
+                      <Badge variant="outline" className="bg-violet-50 text-violet-600 border-violet-200">
                         Temp: {point.temp_cabinet.toFixed(1)}°C
                       </Badge>
                     )}
                     {point.door_open && (
-                      <Badge variant="outline" className="bg-amber-50 text-amber-600 border-amber-200">
+                      <Badge variant="outline" className="bg-indigo-50 text-indigo-600 border-indigo-200">
                         Door Open
                       </Badge>
                     )}
                     {point.frost_level > 0.5 && (
-                      <Badge variant="outline" className="bg-blue-50 text-blue-600 border-blue-200">
+                      <Badge variant="outline" className="bg-cyan-50 text-cyan-600 border-cyan-200">
                         Frost: {(point.frost_level * 100).toFixed(0)}%
                       </Badge>
                     )}

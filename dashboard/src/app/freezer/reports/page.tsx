@@ -58,19 +58,19 @@ interface AssetSummary {
   anomalyCount: number;
 }
 
-// Chart configurations
+// Chart configurations - Modern cool palette (cyan, teal, blue, purple, indigo)
 const tempChartConfig = {
   avg: {
     label: "Average",
-    color: "#06b6d4",
+    color: "#2dd4bf", // Teal
   },
   min: {
     label: "Min",
-    color: "#3b82f6",
+    color: "#818cf8", // Indigo
   },
   max: {
     label: "Max",
-    color: "#ef4444",
+    color: "#c084fc", // Purple
   },
 } satisfies ChartConfig;
 
@@ -80,15 +80,15 @@ const statusChartConfig = {
   },
   healthy: {
     label: "Healthy",
-    color: "#10b981",
+    color: "#2dd4bf", // Teal
   },
   warning: {
     label: "Warning",
-    color: "#f59e0b",
+    color: "#818cf8", // Indigo
   },
   critical: {
     label: "Critical",
-    color: "#ef4444",
+    color: "#8b5cf6", // Violet
   },
 } satisfies ChartConfig;
 
@@ -98,26 +98,26 @@ const anomalyChartConfig = {
   },
   tempExcursions: {
     label: "Temp Excursions",
-    color: "#ef4444",
+    color: "#8b5cf6", // Violet
   },
   doorEvents: {
     label: "Door Events",
-    color: "#f59e0b",
+    color: "#a78bfa", // Light violet
   },
   powerSpikes: {
     label: "Power Spikes",
-    color: "#3b82f6",
+    color: "#60a5fa", // Blue
   },
   frostAlerts: {
     label: "Frost Alerts",
-    color: "#06b6d4",
+    color: "#5eead4", // Cyan
   },
 } satisfies ChartConfig;
 
 const powerChartConfig = {
   power: {
     label: "Power (W)",
-    color: "#10b981",
+    color: "#2dd4bf", // Teal
   },
 } satisfies ChartConfig;
 
@@ -151,10 +151,10 @@ function generatePowerData(timeRange: TimeRange) {
 function generateAnomalyData(timeRange: TimeRange) {
   const multiplier = timeRange === "24h" ? 1 : timeRange === "7d" ? 3 : 10;
   return [
-    { name: "Temp Excursions", value: Math.floor(2 * multiplier + Math.random() * 3), fill: "#ef4444" },
-    { name: "Door Events", value: Math.floor(5 * multiplier + Math.random() * 5), fill: "#f59e0b" },
-    { name: "Power Spikes", value: Math.floor(1 * multiplier + Math.random() * 2), fill: "#3b82f6" },
-    { name: "Frost Alerts", value: Math.floor(3 * multiplier + Math.random() * 4), fill: "#06b6d4" },
+    { name: "Temp Excursions", value: Math.floor(2 * multiplier + Math.random() * 3), fill: "#8b5cf6" },
+    { name: "Door Events", value: Math.floor(5 * multiplier + Math.random() * 5), fill: "#a78bfa" },
+    { name: "Power Spikes", value: Math.floor(1 * multiplier + Math.random() * 2), fill: "#60a5fa" },
+    { name: "Frost Alerts", value: Math.floor(3 * multiplier + Math.random() * 4), fill: "#5eead4" },
   ];
 }
 
@@ -236,9 +236,9 @@ export default function ReportsPage() {
   const anomalyData = generateAnomalyData(timeRange);
 
   const statusData = [
-    { name: "healthy", value: summary.healthy, fill: "#10b981" },
-    { name: "warning", value: summary.warning, fill: "#f59e0b" },
-    { name: "critical", value: summary.critical, fill: "#ef4444" },
+    { name: "healthy", value: summary.healthy, fill: "#2dd4bf" },
+    { name: "warning", value: summary.warning, fill: "#818cf8" },
+    { name: "critical", value: summary.critical, fill: "#8b5cf6" },
   ];
 
   const timeRangeLabel = timeRange === "24h" ? "Last 24 Hours" : timeRange === "7d" ? "Last 7 Days" : "Last 30 Days";

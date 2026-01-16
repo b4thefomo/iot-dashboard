@@ -6,8 +6,15 @@ import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { FreezerReading } from "@/hooks/use-fleet-data";
-import { Send, Bot, User, Loader2, Download, Share2, Bell, ClipboardList, FileText, Wrench, History, HelpCircle, Snowflake, Maximize2, X } from "lucide-react";
+import { Send, Bot, User, Loader2, Download, Share2, Bell, ClipboardList, FileText, Wrench, History, HelpCircle, Snowflake, Maximize2, X, MoreVertical, Save, FolderOpen, Trash2 } from "lucide-react";
 import { Markdown } from "@/components/ui/markdown";
 
 interface SuggestedAction {
@@ -20,6 +27,13 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   suggestedActions?: SuggestedAction[];
+}
+
+interface SavedChat {
+  id: string;
+  title: string;
+  messages: Message[];
+  savedAt: string;
 }
 
 // Parse suggested actions from AI response
@@ -98,18 +112,102 @@ interface FreezerChatProps {
   fleetStatus: Record<string, FreezerReading>;
 }
 
+const SAVED_CHATS_KEY = "subzero-saved-chats";
+
 export function FreezerChat({ fleetStatus }: FreezerChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [savedChats, setSavedChats] = useState<SavedChat[]>([]);
+  const [showSavedChats, setShowSavedChats] = useState(false);
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
   // Track when component is mounted for portal
   useEffect(() => {
     setMounted(true);
+    // Load saved chats from localStorage
+    const saved = localStorage.getItem(SAVED_CHATS_KEY);
+    if (saved) {
+      setSavedChats(JSON.parse(saved));
+    }
   }, []);
+
+  // Generate title from first user message
+  const generateChatTitle = (msgs: Message[]): string => {
+    const firstUserMsg = msgs.find((m) => m.role === "user");
+    if (firstUserMsg) {
+      const title = firstUserMsg.content.slice(0, 40);
+      return title.length < firstUserMsg.content.length ? `${title}...` : title;
+    }
+    return `Analysis ${new Date().toLocaleDateString()}`;
+  };
+
+  // Save current chat
+  const saveChat = () => {
+    if (messages.length === 0) return;
+
+    const newChat: SavedChat = {
+      id: Date.now().toString(),
+      title: generateChatTitle(messages),
+      messages: messages,
+      savedAt: new Date().toISOString(),
+    };
+
+    const updatedChats = [newChat, ...savedChats];
+    setSavedChats(updatedChats);
+    localStorage.setItem(SAVED_CHATS_KEY, JSON.stringify(updatedChats));
+  };
+
+  // Load a saved chat
+  const loadChat = (chat: SavedChat) => {
+    setMessages(chat.messages);
+    setShowSavedChats(false);
+  };
+
+  // Delete a saved chat
+  const deleteChat = (chatId: string) => {
+    const updatedChats = savedChats.filter((c) => c.id !== chatId);
+    setSavedChats(updatedChats);
+    localStorage.setItem(SAVED_CHATS_KEY, JSON.stringify(updatedChats));
+  };
+
+  // Download chat as report
+  const downloadAsReport = () => {
+    if (messages.length === 0) return;
+
+    const timestamp = new Date().toLocaleString();
+    let reportContent = `SUBZERO FLEET COMMAND - AI ANALYSIS REPORT\n`;
+    reportContent += `Generated: ${timestamp}\n`;
+    reportContent += `${"=".repeat(50)}\n\n`;
+
+    messages.forEach((msg) => {
+      const role = msg.role === "user" ? "OPERATOR" : "AI ASSISTANT";
+      reportContent += `[${role}]\n`;
+      reportContent += `${msg.content}\n\n`;
+      reportContent += `${"-".repeat(40)}\n\n`;
+    });
+
+    reportContent += `\n${"=".repeat(50)}\n`;
+    reportContent += `End of Report\n`;
+
+    const blob = new Blob([reportContent], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `fleet-analysis-${Date.now()}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // Start new chat
+  const startNewChat = () => {
+    setMessages([]);
+    setShowSavedChats(false);
+  };
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
@@ -247,20 +345,103 @@ export function FreezerChat({ fleetStatus }: FreezerChatProps) {
           <Snowflake className="h-4 w-4 text-cyan-500" />
           <h3 className="font-semibold text-slate-900">Asset AI Assistant</h3>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={() => setIsExpanded(!isExpanded)}
-        >
-          {isExpanded ? <X className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-        </Button>
+        <div className="flex items-center gap-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8">
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={saveChat} disabled={messages.length === 0}>
+                <Save className="h-4 w-4 mr-2" />
+                Save Chat
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowSavedChats(true)}>
+                <FolderOpen className="h-4 w-4 mr-2" />
+                Load Saved Chat
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={downloadAsReport} disabled={messages.length === 0}>
+                <Download className="h-4 w-4 mr-2" />
+                Download Report
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={startNewChat} disabled={messages.length === 0}>
+                <Trash2 className="h-4 w-4 mr-2" />
+                New Chat
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setIsExpanded(!isExpanded)}
+          >
+            {isExpanded ? <X className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </Button>
+        </div>
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-hidden">
         <ScrollArea className="h-full p-4" ref={scrollRef}>
-          {messages.length === 0 ? (
+          {/* Saved Chats View */}
+          {showSavedChats ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="font-semibold text-slate-900">Saved Analyses</h4>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowSavedChats(false)}
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Close
+                </Button>
+              </div>
+              {savedChats.length === 0 ? (
+                <div className="text-center py-8 text-slate-500">
+                  <FolderOpen className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">No saved analyses yet</p>
+                  <p className="text-xs text-slate-400">Save a chat to view it here later</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {savedChats.map((chat) => (
+                    <div
+                      key={chat.id}
+                      className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors border"
+                    >
+                      <button
+                        className="flex-1 text-left"
+                        onClick={() => loadChat(chat)}
+                      >
+                        <div className="font-medium text-sm text-slate-900 truncate">
+                          {chat.title}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {new Date(chat.savedAt).toLocaleString()} · {chat.messages.length} messages
+                        </div>
+                      </button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-slate-400 hover:text-rose-500"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteChat(chat.id);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : messages.length === 0 ? (
             <div className="text-center py-8">
               <Bot className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
               <p className="text-sm text-muted-foreground mb-4">

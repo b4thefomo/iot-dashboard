@@ -84,9 +84,11 @@ export function FleetMap({
               }}
             >
               <div
-                className="relative cursor-pointer group"
+                className="relative cursor-pointer group flex items-center justify-center"
                 style={{
                   zIndex: status === "critical" ? 30 : status === "warning" ? 20 : 10,
+                  width: isSelected ? 20 : 14,
+                  height: isSelected ? 20 : 14,
                 }}
               >
                 {/* Pulse ring for critical/warning */}
@@ -96,9 +98,6 @@ export function FleetMap({
                     style={{
                       width: isSelected ? 28 : 22,
                       height: isSelected ? 28 : 22,
-                      left: "50%",
-                      top: "50%",
-                      transform: "translate(-50%, -50%)",
                       border: `2px solid ${color}`,
                       opacity: 0.6,
                     }}
@@ -107,7 +106,7 @@ export function FleetMap({
 
                 {/* Marker dot */}
                 <div
-                  className="relative rounded-full border-2 border-white shadow-lg transition-transform duration-200 hover:scale-150"
+                  className="rounded-full border-2 border-white shadow-lg transition-transform duration-200 hover:scale-150"
                   style={{
                     width: isSelected ? 20 : 14,
                     height: isSelected ? 20 : 14,

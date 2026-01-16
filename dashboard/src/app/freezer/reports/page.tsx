@@ -31,6 +31,8 @@ import {
   AlertTriangle,
   Home,
   LayoutGrid,
+  Check,
+  Grid3X3,
 } from "lucide-react";
 import {
   Bar,
@@ -458,165 +460,223 @@ export default function ReportsPage() {
             </div>
 
             {/* Right Column - Report Generator */}
-            <div className="w-80 flex-shrink-0 space-y-6">
+            <div className="w-96 flex-shrink-0 space-y-6">
               {/* Report Generator Card */}
               <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Generate Report</CardTitle>
+                <CardHeader className="pb-4">
+                  <CardTitle className="text-xl font-bold">Generate Report</CardTitle>
                   <CardDescription>Export the data shown in charts</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-5">
+                <CardContent className="space-y-6">
                   {/* Report Type */}
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                    <label className="block text-sm font-medium text-slate-900 mb-3">
                       Report Type
                     </label>
-                    <div className="flex flex-col gap-2">
-                      <Button
-                        variant={reportType === "summary" ? "default" : "outline"}
-                        size="sm"
+                    <div className="flex flex-col gap-3">
+                      <button
                         onClick={() => setReportType("summary")}
-                        className="justify-start"
+                        className={`w-full p-4 rounded-lg border-2 text-left transition-all flex items-center justify-between ${
+                          reportType === "summary"
+                            ? "bg-slate-900 border-slate-900 text-white"
+                            : "border-slate-200 hover:border-slate-300 bg-white"
+                        }`}
                       >
-                        Summary
-                      </Button>
-                      <Button
-                        variant={reportType === "detailed" ? "default" : "outline"}
-                        size="sm"
+                        <div>
+                          <div className="font-semibold">Summary</div>
+                          <div className={`text-sm ${reportType === "summary" ? "text-slate-300" : "text-slate-500"}`}>
+                            High-level overview
+                          </div>
+                        </div>
+                        {reportType === "summary" && (
+                          <div className="h-6 w-6 bg-teal-500 rounded-full flex items-center justify-center">
+                            <Check className="h-4 w-4 text-white" />
+                          </div>
+                        )}
+                      </button>
+                      <button
                         onClick={() => setReportType("detailed")}
-                        className="justify-start"
+                        className={`w-full p-4 rounded-lg border-2 text-left transition-all flex items-center justify-between ${
+                          reportType === "detailed"
+                            ? "bg-slate-900 border-slate-900 text-white"
+                            : "border-slate-200 hover:border-slate-300 bg-white"
+                        }`}
                       >
-                        Detailed
-                      </Button>
-                      <Button
-                        variant={reportType === "anomaly" ? "default" : "outline"}
-                        size="sm"
+                        <div>
+                          <div className="font-semibold">Detailed</div>
+                          <div className={`text-sm ${reportType === "detailed" ? "text-slate-300" : "text-slate-500"}`}>
+                            Full analysis report
+                          </div>
+                        </div>
+                        {reportType === "detailed" && (
+                          <div className="h-6 w-6 bg-teal-500 rounded-full flex items-center justify-center">
+                            <Check className="h-4 w-4 text-white" />
+                          </div>
+                        )}
+                      </button>
+                      <button
                         onClick={() => setReportType("anomaly")}
-                        className="justify-start"
+                        className={`w-full p-4 rounded-lg border-2 text-left transition-all flex items-center justify-between ${
+                          reportType === "anomaly"
+                            ? "bg-slate-900 border-slate-900 text-white"
+                            : "border-slate-200 hover:border-slate-300 bg-white"
+                        }`}
                       >
-                        Anomaly Log
-                      </Button>
+                        <div>
+                          <div className="font-semibold">Anomaly Log</div>
+                          <div className={`text-sm ${reportType === "anomaly" ? "text-slate-300" : "text-slate-500"}`}>
+                            All detected issues
+                          </div>
+                        </div>
+                        {reportType === "anomaly" && (
+                          <div className="h-6 w-6 bg-teal-500 rounded-full flex items-center justify-center">
+                            <Check className="h-4 w-4 text-white" />
+                          </div>
+                        )}
+                      </button>
                     </div>
                   </div>
 
                   {/* Time Range */}
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                    <label className="block text-sm font-medium text-slate-900 mb-3">
                       Time Range
                     </label>
-                    <div className="flex flex-col gap-2">
-                      <Button
-                        variant={timeRange === "24h" ? "default" : "outline"}
-                        size="sm"
+                    <div className="flex flex-col gap-3">
+                      <button
                         onClick={() => setTimeRange("24h")}
-                        className="justify-start"
+                        className={`w-full px-4 py-3 rounded-lg border-2 text-left transition-all flex items-center justify-between ${
+                          timeRange === "24h"
+                            ? "bg-slate-900 border-slate-900 text-white"
+                            : "border-slate-200 hover:border-slate-300 bg-white"
+                        }`}
                       >
-                        <Clock className="h-4 w-4 mr-2" />
-                        Last 24 Hours
-                      </Button>
-                      <Button
-                        variant={timeRange === "7d" ? "default" : "outline"}
-                        size="sm"
+                        <div className="flex items-center gap-3">
+                          <Clock className={`h-5 w-5 ${timeRange === "24h" ? "text-slate-400" : "text-slate-400"}`} />
+                          <span className="font-medium">Last 24 Hours</span>
+                        </div>
+                        {timeRange === "24h" && (
+                          <Check className="h-5 w-5 text-teal-400" />
+                        )}
+                      </button>
+                      <button
                         onClick={() => setTimeRange("7d")}
-                        className="justify-start"
+                        className={`w-full px-4 py-3 rounded-lg border-2 text-left transition-all flex items-center justify-between ${
+                          timeRange === "7d"
+                            ? "bg-slate-900 border-slate-900 text-white"
+                            : "border-slate-200 hover:border-slate-300 bg-white"
+                        }`}
                       >
-                        <Clock className="h-4 w-4 mr-2" />
-                        Last 7 Days
-                      </Button>
-                      <Button
-                        variant={timeRange === "30d" ? "default" : "outline"}
-                        size="sm"
+                        <div className="flex items-center gap-3">
+                          <Clock className={`h-5 w-5 ${timeRange === "7d" ? "text-slate-400" : "text-slate-400"}`} />
+                          <span className="font-medium">Last 7 Days</span>
+                        </div>
+                        {timeRange === "7d" && (
+                          <Check className="h-5 w-5 text-teal-400" />
+                        )}
+                      </button>
+                      <button
                         onClick={() => setTimeRange("30d")}
-                        className="justify-start"
+                        className={`w-full px-4 py-3 rounded-lg border-2 text-left transition-all flex items-center justify-between ${
+                          timeRange === "30d"
+                            ? "bg-slate-900 border-slate-900 text-white"
+                            : "border-slate-200 hover:border-slate-300 bg-white"
+                        }`}
                       >
-                        <Clock className="h-4 w-4 mr-2" />
-                        Last 30 Days
-                      </Button>
+                        <div className="flex items-center gap-3">
+                          <Clock className={`h-5 w-5 ${timeRange === "30d" ? "text-slate-400" : "text-slate-400"}`} />
+                          <span className="font-medium">Last 30 Days</span>
+                        </div>
+                        {timeRange === "30d" && (
+                          <Check className="h-5 w-5 text-teal-400" />
+                        )}
+                      </button>
                     </div>
                   </div>
 
                   {/* Format */}
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                    <label className="block text-sm font-medium text-slate-900 mb-3">
                       Format
                     </label>
-                    <div className="flex gap-2">
-                      <Button
-                        variant={format === "pdf" ? "default" : "outline"}
-                        size="sm"
+                    <div className="flex gap-3">
+                      <button
                         onClick={() => setFormat("pdf")}
-                        className="flex-1"
+                        className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all flex items-center justify-center gap-2 font-medium ${
+                          format === "pdf"
+                            ? "bg-slate-900 border-slate-900 text-white"
+                            : "border-slate-200 hover:border-slate-300 bg-white text-slate-700"
+                        }`}
                       >
-                        <FileText className="h-4 w-4 mr-1" />
+                        <FileText className="h-5 w-5" />
                         PDF
-                      </Button>
-                      <Button
-                        variant={format === "csv" ? "default" : "outline"}
-                        size="sm"
+                      </button>
+                      <button
                         onClick={() => setFormat("csv")}
-                        className="flex-1"
+                        className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all flex items-center justify-center gap-2 font-medium ${
+                          format === "csv"
+                            ? "bg-slate-900 border-slate-900 text-white"
+                            : "border-slate-200 hover:border-slate-300 bg-white text-slate-700"
+                        }`}
                       >
-                        <FileSpreadsheet className="h-4 w-4 mr-1" />
+                        <Grid3X3 className="h-5 w-5" />
                         CSV
-                      </Button>
+                      </button>
                     </div>
                   </div>
 
                   {/* Generate Button */}
-                  <div className="pt-4 border-t">
-                    <Button
-                      size="lg"
-                      onClick={handleGenerateReport}
-                      disabled={isGenerating}
-                      className="w-full"
-                    >
-                      {isGenerating ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Generating...
-                        </>
-                      ) : (
-                        <>
-                          <Download className="h-4 w-4 mr-2" />
-                          Generate Report
-                        </>
-                      )}
-                    </Button>
-                  </div>
+                  <button
+                    onClick={handleGenerateReport}
+                    disabled={isGenerating}
+                    className="w-full py-4 rounded-lg bg-slate-900 text-white font-semibold flex items-center justify-center gap-2 hover:bg-slate-800 transition-colors disabled:opacity-50"
+                  >
+                    {isGenerating ? (
+                      <>
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="h-5 w-5" />
+                        Generate Report
+                      </>
+                    )}
+                  </button>
                 </CardContent>
               </Card>
 
               {/* Quick Export */}
               <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Quick Export</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <button
-                    className="w-full p-3 border hover:bg-slate-50 transition-colors text-left flex items-center gap-3"
-                    onClick={() => { setFormat("csv"); setTimeRange("24h"); handleGenerateReport(); }}
-                  >
-                    <div className="p-2 bg-emerald-100 text-emerald-600">
-                      <FileSpreadsheet className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <div className="font-medium text-slate-900 text-sm">CSV Export</div>
-                      <div className="text-xs text-slate-500">Current snapshot</div>
-                    </div>
-                  </button>
+                <CardContent className="p-6">
+                  <h3 className="font-semibold text-slate-900 mb-4">Quick Export</h3>
+                  <div className="space-y-3 border-l-2 border-slate-200 pl-4">
+                    <button
+                      className="w-full flex items-center gap-3 hover:bg-slate-50 transition-colors py-2 text-left"
+                      onClick={() => { setFormat("csv"); setTimeRange("24h"); handleGenerateReport(); }}
+                    >
+                      <div className="p-2 bg-teal-100 text-teal-600 rounded-lg">
+                        <Grid3X3 className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-slate-900">CSV Export</div>
+                        <div className="text-sm text-slate-500">Current snapshot</div>
+                      </div>
+                    </button>
 
-                  <button
-                    className="w-full p-3 border hover:bg-slate-50 transition-colors text-left flex items-center gap-3"
-                    onClick={() => { setFormat("pdf"); handleGenerateReport(); }}
-                  >
-                    <div className="p-2 bg-blue-100 text-blue-600">
-                      <FileText className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <div className="font-medium text-slate-900 text-sm">PDF Report</div>
-                      <div className="text-xs text-slate-500">Full status report</div>
-                    </div>
-                  </button>
+                    <button
+                      className="w-full flex items-center gap-3 hover:bg-slate-50 transition-colors py-2 text-left"
+                      onClick={() => { setFormat("pdf"); handleGenerateReport(); }}
+                    >
+                      <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
+                        <FileText className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-slate-900">PDF Report</div>
+                        <div className="text-sm text-slate-500">Full status report</div>
+                      </div>
+                    </button>
+                  </div>
                 </CardContent>
               </Card>
             </div>

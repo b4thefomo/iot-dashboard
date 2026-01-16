@@ -29,6 +29,8 @@ import {
   Thermometer,
   Zap,
   AlertTriangle,
+  Home,
+  LayoutGrid,
 } from "lucide-react";
 import {
   Bar,
@@ -257,6 +259,11 @@ export default function ReportsPage() {
           isConnected={true}
           isOnline={true}
           alertCount={0}
+          pageIcon={FileText}
+          breadcrumbs={[
+            { label: "Home", href: "/", icon: Home },
+            { label: "Dashboard", href: "/freezer", icon: LayoutGrid },
+          ]}
         />
 
         {/* Content Area */}

@@ -22,6 +22,8 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize2,
+  LayoutGrid,
+  Home,
 } from "lucide-react";
 
 export default function FreezerDashboard() {
@@ -80,6 +82,11 @@ export default function FreezerDashboard() {
           isConnected={isConnected}
           isOnline={isOnline}
           alertCount={alerts.length}
+          pageIcon={LayoutGrid}
+          breadcrumbs={[
+            { label: "Home", href: "/", icon: Home },
+            { label: "Dashboard", href: "/freezer" },
+          ]}
         />
 
         {/* Content Area */}

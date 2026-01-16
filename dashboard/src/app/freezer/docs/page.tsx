@@ -10,6 +10,8 @@ import {
   Code,
   Copy,
   Check,
+  Home,
+  LayoutGrid,
 } from "lucide-react";
 
 interface EndpointDoc {
@@ -174,6 +176,11 @@ export default function DocsPage() {
           isConnected={true}
           isOnline={true}
           alertCount={0}
+          pageIcon={Code}
+          breadcrumbs={[
+            { label: "Home", href: "/", icon: Home },
+            { label: "Dashboard", href: "/freezer", icon: LayoutGrid },
+          ]}
         />
 
         {/* Content Area */}

@@ -30,7 +30,7 @@ export function FleetMap({
   const statusColors = {
     healthy: "#2dd4bf", // Teal
     warning: "#818cf8", // Indigo
-    critical: "#8b5cf6", // Violet
+    critical: "#e11d48", // Rose/Crimson
   };
 
   const handleMarkerClick = useCallback(
@@ -159,7 +159,7 @@ export function FleetMap({
                       </div>
                     )}
                     {device.fault !== "NORMAL" && (
-                      <div className="text-violet-300 mt-1">{device.fault}</div>
+                      <div className="text-rose-300 mt-1">{device.fault}</div>
                     )}
                   </div>
                   <div

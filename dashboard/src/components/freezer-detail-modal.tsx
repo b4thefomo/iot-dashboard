@@ -95,7 +95,7 @@ export function FreezerDetailModal({
   const statusColors = {
     healthy: "bg-teal-100 text-teal-700 border-teal-300",
     warning: "bg-indigo-100 text-indigo-700 border-indigo-300",
-    critical: "bg-violet-100 text-violet-700 border-violet-300",
+    critical: "bg-rose-100 text-rose-700 border-rose-300",
   };
 
   // Find anomalies in history
@@ -136,7 +136,7 @@ export function FreezerDetailModal({
               <div
                 className={`font-semibold text-lg ${
                   device.temp_cabinet > -10
-                    ? "text-violet-600"
+                    ? "text-rose-600"
                     : device.temp_cabinet > -15
                     ? "text-indigo-500"
                     : "text-slate-900"
@@ -324,7 +324,7 @@ export function FreezerDetailModal({
                   <span className="text-slate-600">{point.time}</span>
                   <div className="flex items-center gap-3">
                     {point.temp_cabinet > -10 && (
-                      <Badge variant="outline" className="bg-violet-50 text-violet-600 border-violet-200">
+                      <Badge variant="outline" className="bg-rose-50 text-rose-600 border-rose-200">
                         Temp: {point.temp_cabinet.toFixed(1)}°C
                       </Badge>
                     )}

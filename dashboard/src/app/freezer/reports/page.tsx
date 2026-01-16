@@ -100,11 +100,11 @@ const anomalyChartConfig = {
   },
   tempExcursions: {
     label: "Temp Excursions",
-    color: "#8b5cf6", // Violet
+    color: "#e11d48", // Rose/Crimson
   },
   doorEvents: {
     label: "Door Events",
-    color: "#a78bfa", // Light violet
+    color: "#818cf8", // Indigo
   },
   powerSpikes: {
     label: "Power Spikes",

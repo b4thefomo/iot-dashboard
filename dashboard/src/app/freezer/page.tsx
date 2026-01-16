@@ -121,11 +121,11 @@ export default function FreezerDashboard() {
                 />
                 <StatCard
                   icon={AlertTriangle}
-                  iconColor="text-violet-500"
-                  iconBg="bg-violet-50"
+                  iconColor="text-rose-500"
+                  iconBg="bg-rose-50"
                   label="Critical"
                   value={criticalCount}
-                  valueColor="text-violet-600"
+                  valueColor="text-rose-600"
                 />
                 <StatCard
                   icon={Thermometer}
@@ -133,7 +133,7 @@ export default function FreezerDashboard() {
                   iconBg="bg-blue-50"
                   label="Avg Temp"
                   value={`${avgTemp.toFixed(1)}°C`}
-                  valueColor={avgTemp > -10 ? "text-violet-600" : "text-slate-900"}
+                  valueColor={avgTemp > -10 ? "text-rose-600" : "text-slate-900"}
                 />
                 <StatCard
                   icon={Zap}

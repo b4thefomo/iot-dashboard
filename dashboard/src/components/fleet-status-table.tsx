@@ -42,7 +42,7 @@ export function FleetStatusTable({
   const statusColors = {
     healthy: "bg-teal-400",
     warning: "bg-indigo-400",
-    critical: "bg-violet-500",
+    critical: "bg-rose-500",
   };
 
   // Group devices by location
@@ -101,7 +101,7 @@ export function FleetStatusTable({
   const getStatusBadge = (group: LocationGroup) => {
     if (group.criticalCount > 0) {
       return (
-        <Badge className="bg-violet-100 text-violet-600 border-0">
+        <Badge className="bg-rose-100 text-rose-600 border-0">
           {group.criticalCount} Critical
         </Badge>
       );
@@ -227,7 +227,7 @@ export function FleetStatusTable({
                               <td
                                 className={`px-4 py-2.5 font-mono ${
                                   device.temp_cabinet > -10
-                                    ? "text-violet-600"
+                                    ? "text-rose-600"
                                     : device.temp_cabinet > -15
                                     ? "text-indigo-500"
                                     : "text-teal-600"

@@ -92,7 +92,7 @@ export function FleetHeader({
           <Button variant="ghost" size="icon" className="relative">
             <Bell className="h-5 w-5 text-slate-600" />
             {alertCount > 0 && (
-              <span className="absolute -top-1 -right-1 h-5 w-5 bg-violet-500 text-white text-xs font-medium flex items-center justify-center">
+              <span className="absolute -top-1 -right-1 h-5 w-5 bg-rose-500 text-white text-xs font-medium flex items-center justify-center">
                 {alertCount > 9 ? "9+" : alertCount}
               </span>
             )}
@@ -106,7 +106,7 @@ export function FleetHeader({
                 Connected
               </Badge>
             ) : (
-              <Badge variant="outline" className="bg-violet-50 text-violet-600 border-violet-200 gap-1.5">
+              <Badge variant="outline" className="bg-rose-50 text-rose-600 border-rose-200 gap-1.5">
                 <WifiOff className="h-3 w-3" />
                 Disconnected
               </Badge>

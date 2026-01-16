@@ -21,7 +21,7 @@ export function AlertPanel({ alerts, onSelectDevice }: AlertPanelProps) {
   };
 
   const getAlertColor = (device: FreezerReading) => {
-    if (device.fault !== "NORMAL" || device.temp_cabinet > -5) return "text-violet-600";
+    if (device.fault !== "NORMAL" || device.temp_cabinet > -5) return "text-rose-600";
     if (device.door_open) return "text-indigo-500";
     return "text-indigo-500";
   };

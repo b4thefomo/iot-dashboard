@@ -6,6 +6,21 @@ import { FreezerSidebar } from "@/components/freezer-sidebar";
 import { FleetHeader } from "@/components/fleet-header";
 import { Button } from "@/components/ui/button";
 import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  ChartLegend,
+  ChartLegendContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
+import {
   FileText,
   FileSpreadsheet,
   Download,
@@ -16,19 +31,15 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import {
-  BarChart,
   Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  LineChart,
-  Line,
-  Legend,
 } from "recharts";
 
 type ReportType = "summary" | "detailed" | "anomaly";
@@ -44,6 +55,69 @@ interface AssetSummary {
   avgPower: number;
   anomalyCount: number;
 }
+
+// Chart configurations
+const tempChartConfig = {
+  avg: {
+    label: "Average",
+    color: "#06b6d4",
+  },
+  min: {
+    label: "Min",
+    color: "#3b82f6",
+  },
+  max: {
+    label: "Max",
+    color: "#ef4444",
+  },
+} satisfies ChartConfig;
+
+const statusChartConfig = {
+  value: {
+    label: "Assets",
+  },
+  healthy: {
+    label: "Healthy",
+    color: "#10b981",
+  },
+  warning: {
+    label: "Warning",
+    color: "#f59e0b",
+  },
+  critical: {
+    label: "Critical",
+    color: "#ef4444",
+  },
+} satisfies ChartConfig;
+
+const anomalyChartConfig = {
+  value: {
+    label: "Count",
+  },
+  tempExcursions: {
+    label: "Temp Excursions",
+    color: "#ef4444",
+  },
+  doorEvents: {
+    label: "Door Events",
+    color: "#f59e0b",
+  },
+  powerSpikes: {
+    label: "Power Spikes",
+    color: "#3b82f6",
+  },
+  frostAlerts: {
+    label: "Frost Alerts",
+    color: "#06b6d4",
+  },
+} satisfies ChartConfig;
+
+const powerChartConfig = {
+  power: {
+    label: "Power (W)",
+    color: "#10b981",
+  },
+} satisfies ChartConfig;
 
 // Generate mock chart data based on time range
 function generateTempTrendData(timeRange: TimeRange) {
@@ -75,10 +149,10 @@ function generatePowerData(timeRange: TimeRange) {
 function generateAnomalyData(timeRange: TimeRange) {
   const multiplier = timeRange === "24h" ? 1 : timeRange === "7d" ? 3 : 10;
   return [
-    { name: "Temp Excursions", value: Math.floor(2 * multiplier + Math.random() * 3), color: "#ef4444" },
-    { name: "Door Events", value: Math.floor(5 * multiplier + Math.random() * 5), color: "#f59e0b" },
-    { name: "Power Spikes", value: Math.floor(1 * multiplier + Math.random() * 2), color: "#3b82f6" },
-    { name: "Frost Alerts", value: Math.floor(3 * multiplier + Math.random() * 4), color: "#06b6d4" },
+    { name: "Temp Excursions", value: Math.floor(2 * multiplier + Math.random() * 3), fill: "#ef4444" },
+    { name: "Door Events", value: Math.floor(5 * multiplier + Math.random() * 5), fill: "#f59e0b" },
+    { name: "Power Spikes", value: Math.floor(1 * multiplier + Math.random() * 2), fill: "#3b82f6" },
+    { name: "Frost Alerts", value: Math.floor(3 * multiplier + Math.random() * 4), fill: "#06b6d4" },
   ];
 }
 
@@ -160,9 +234,9 @@ export default function ReportsPage() {
   const anomalyData = generateAnomalyData(timeRange);
 
   const statusData = [
-    { name: "Healthy", value: summary.healthy, color: "#10b981" },
-    { name: "Warning", value: summary.warning, color: "#f59e0b" },
-    { name: "Critical", value: summary.critical, color: "#ef4444" },
+    { name: "healthy", value: summary.healthy, fill: "#10b981" },
+    { name: "warning", value: summary.warning, fill: "#f59e0b" },
+    { name: "critical", value: summary.critical, fill: "#ef4444" },
   ];
 
   const timeRangeLabel = timeRange === "24h" ? "Last 24 Hours" : timeRange === "7d" ? "Last 7 Days" : "Last 30 Days";
@@ -217,116 +291,174 @@ export default function ReportsPage() {
               </div>
 
               {/* Temperature Trend Chart */}
-              <div className="bg-white border">
-                <div className="px-4 py-3 border-b">
-                  <h3 className="font-semibold text-slate-900">Temperature Trend</h3>
-                  <p className="text-xs text-slate-500">{timeRangeLabel}</p>
-                </div>
-                <div className="p-4 h-[250px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={tempTrendData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                      <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="#94a3b8" />
-                      <YAxis tick={{ fontSize: 10 }} stroke="#94a3b8" domain={[-25, -10]} />
-                      <Tooltip
-                        contentStyle={{ fontSize: 12, border: "1px solid #e2e8f0" }}
-                        formatter={(value: number) => [`${value.toFixed(1)}°C`]}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">Temperature Trend</CardTitle>
+                  <CardDescription>{timeRangeLabel}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ChartContainer config={tempChartConfig} className="h-[250px] w-full">
+                    <LineChart
+                      data={tempTrendData}
+                      margin={{ left: 12, right: 12, top: 12, bottom: 12 }}
+                    >
+                      <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="name"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        tickFormatter={(value) => value.slice(0, 5)}
                       />
-                      <Legend wrapperStyle={{ fontSize: 11 }} />
-                      <Line type="monotone" dataKey="avg" name="Average" stroke="#06b6d4" strokeWidth={2} dot={false} />
-                      <Line type="monotone" dataKey="min" name="Min" stroke="#3b82f6" strokeWidth={1} dot={false} strokeDasharray="3 3" />
-                      <Line type="monotone" dataKey="max" name="Max" stroke="#ef4444" strokeWidth={1} dot={false} strokeDasharray="3 3" />
+                      <YAxis
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        domain={[-25, -10]}
+                        tickFormatter={(value) => `${value}°`}
+                      />
+                      <ChartTooltip
+                        cursor={false}
+                        content={<ChartTooltipContent />}
+                      />
+                      <ChartLegend content={<ChartLegendContent />} />
+                      <Line
+                        dataKey="avg"
+                        type="monotone"
+                        stroke="var(--color-avg)"
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                      <Line
+                        dataKey="min"
+                        type="monotone"
+                        stroke="var(--color-min)"
+                        strokeWidth={1}
+                        dot={false}
+                        strokeDasharray="4 4"
+                      />
+                      <Line
+                        dataKey="max"
+                        type="monotone"
+                        stroke="var(--color-max)"
+                        strokeWidth={1}
+                        dot={false}
+                        strokeDasharray="4 4"
+                      />
                     </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
+                  </ChartContainer>
+                </CardContent>
+              </Card>
 
               {/* Two Column Charts */}
               <div className="grid grid-cols-2 gap-6">
                 {/* Status Distribution */}
-                <div className="bg-white border">
-                  <div className="px-4 py-3 border-b">
-                    <h3 className="font-semibold text-slate-900">Status Distribution</h3>
-                  </div>
-                  <div className="p-4 h-[200px]">
-                    <ResponsiveContainer width="100%" height="100%">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">Status Distribution</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ChartContainer config={statusChartConfig} className="h-[200px] w-full">
                       <PieChart>
+                        <ChartTooltip
+                          cursor={false}
+                          content={<ChartTooltipContent hideLabel />}
+                        />
                         <Pie
                           data={statusData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={40}
-                          outerRadius={70}
-                          paddingAngle={2}
                           dataKey="value"
-                        >
-                          {statusData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                        <Tooltip formatter={(value: number) => [value, "Assets"]} />
-                        <Legend wrapperStyle={{ fontSize: 11 }} />
+                          nameKey="name"
+                          innerRadius={50}
+                          outerRadius={80}
+                          paddingAngle={2}
+                        />
+                        <ChartLegend content={<ChartLegendContent nameKey="name" />} />
                       </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
+                    </ChartContainer>
+                  </CardContent>
+                </Card>
 
                 {/* Anomaly Breakdown */}
-                <div className="bg-white border">
-                  <div className="px-4 py-3 border-b">
-                    <h3 className="font-semibold text-slate-900">Anomaly Breakdown</h3>
-                    <p className="text-xs text-slate-500">{timeRangeLabel}</p>
-                  </div>
-                  <div className="p-4 h-[200px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={anomalyData} layout="vertical">
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                        <XAxis type="number" tick={{ fontSize: 10 }} stroke="#94a3b8" />
-                        <YAxis dataKey="name" type="category" tick={{ fontSize: 10 }} stroke="#94a3b8" width={90} />
-                        <Tooltip contentStyle={{ fontSize: 12, border: "1px solid #e2e8f0" }} />
-                        <Bar dataKey="value" name="Count">
-                          {anomalyData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Bar>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">Anomaly Breakdown</CardTitle>
+                    <CardDescription>{timeRangeLabel}</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ChartContainer config={anomalyChartConfig} className="h-[200px] w-full">
+                      <BarChart
+                        data={anomalyData}
+                        layout="vertical"
+                        margin={{ left: 0, right: 12 }}
+                      >
+                        <CartesianGrid horizontal={false} strokeDasharray="3 3" />
+                        <XAxis type="number" tickLine={false} axisLine={false} />
+                        <YAxis
+                          dataKey="name"
+                          type="category"
+                          tickLine={false}
+                          axisLine={false}
+                          tickMargin={8}
+                          width={100}
+                          tick={{ fontSize: 11 }}
+                        />
+                        <ChartTooltip
+                          cursor={false}
+                          content={<ChartTooltipContent hideLabel />}
+                        />
+                        <Bar dataKey="value" radius={4} />
                       </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
+                    </ChartContainer>
+                  </CardContent>
+                </Card>
               </div>
 
               {/* Power Consumption Chart */}
-              <div className="bg-white border">
-                <div className="px-4 py-3 border-b">
-                  <h3 className="font-semibold text-slate-900">Power Consumption</h3>
-                  <p className="text-xs text-slate-500">{timeRangeLabel}</p>
-                </div>
-                <div className="p-4 h-[200px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={powerData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                      <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="#94a3b8" />
-                      <YAxis tick={{ fontSize: 10 }} stroke="#94a3b8" />
-                      <Tooltip
-                        contentStyle={{ fontSize: 12, border: "1px solid #e2e8f0" }}
-                        formatter={(value: number) => [`${value.toFixed(0)}W`, "Power"]}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">Power Consumption</CardTitle>
+                  <CardDescription>{timeRangeLabel}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ChartContainer config={powerChartConfig} className="h-[200px] w-full">
+                    <BarChart
+                      data={powerData}
+                      margin={{ left: 12, right: 12 }}
+                    >
+                      <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="name"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        tickFormatter={(value) => value.slice(0, 5)}
                       />
-                      <Bar dataKey="power" fill="#10b981" />
+                      <YAxis
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        tickFormatter={(value) => `${value}W`}
+                      />
+                      <ChartTooltip
+                        cursor={false}
+                        content={<ChartTooltipContent />}
+                      />
+                      <Bar dataKey="power" fill="var(--color-power)" radius={4} />
                     </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
+                  </ChartContainer>
+                </CardContent>
+              </Card>
             </div>
 
             {/* Right Column - Report Generator */}
             <div className="w-80 flex-shrink-0 space-y-6">
               {/* Report Generator Card */}
-              <div className="bg-white border">
-                <div className="px-4 py-3 border-b">
-                  <h3 className="font-semibold text-slate-900">Generate Report</h3>
-                  <p className="text-sm text-slate-500">Export the data shown in charts</p>
-                </div>
-                <div className="p-4 space-y-5">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Generate Report</CardTitle>
+                  <CardDescription>Export the data shown in charts</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-5">
                   {/* Report Type */}
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -444,15 +576,15 @@ export default function ReportsPage() {
                       )}
                     </Button>
                   </div>
-                </div>
-              </div>
+                </CardContent>
+              </Card>
 
               {/* Quick Export */}
-              <div className="bg-white border">
-                <div className="px-4 py-3 border-b">
-                  <h3 className="font-semibold text-slate-900">Quick Export</h3>
-                </div>
-                <div className="p-4 space-y-3">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Quick Export</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
                   <button
                     className="w-full p-3 border hover:bg-slate-50 transition-colors text-left flex items-center gap-3"
                     onClick={() => { setFormat("csv"); setTimeRange("24h"); handleGenerateReport(); }}
@@ -478,8 +610,8 @@ export default function ReportsPage() {
                       <div className="text-xs text-slate-500">Full status report</div>
                     </div>
                   </button>
-                </div>
-              </div>
+                </CardContent>
+              </Card>
             </div>
           </div>
         </main>

@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,6 +27,7 @@ interface FleetHeaderProps {
   alertCount?: number;
   breadcrumbs?: BreadcrumbItem[];
   pageIcon?: React.ElementType;
+  onSearchClick?: () => void;
 }
 
 export function FleetHeader({
@@ -40,6 +40,7 @@ export function FleetHeader({
     { label: "Dashboard", href: "/freezer" },
   ],
   pageIcon: PageIcon = LayoutGrid,
+  onSearchClick,
 }: FleetHeaderProps) {
   return (
     <header className="border-b bg-white flex-shrink-0">
@@ -77,13 +78,16 @@ export function FleetHeader({
 
         {/* Center - Search */}
         <div className="flex-1 max-w-md mx-8">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <Input
-              placeholder="Search units..."
-              className="pl-9 bg-slate-50 border-slate-200"
-            />
-          </div>
+          <button
+            onClick={onSearchClick}
+            className="w-full flex items-center gap-3 px-3 py-2 bg-slate-50 border border-slate-200 rounded-md text-left hover:bg-slate-100 hover:border-slate-300 transition-colors"
+          >
+            <Search className="h-4 w-4 text-slate-400" />
+            <span className="flex-1 text-sm text-slate-500">Search units...</span>
+            <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-xs text-slate-400 bg-white border border-slate-200 rounded">
+              \
+            </kbd>
+          </button>
         </div>
 
         {/* Right Side - Notifications & Status */}

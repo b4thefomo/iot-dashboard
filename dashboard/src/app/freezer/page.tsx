@@ -10,6 +10,7 @@ import { FreezerChat } from "@/components/freezer-chat";
 import { FreezerSidebar } from "@/components/freezer-sidebar";
 import { FreezerDetailModal } from "@/components/freezer-detail-modal";
 import { FleetHeader } from "@/components/fleet-header";
+import { CommandPalette, useCommandPalette } from "@/components/command-palette";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,6 +45,7 @@ export default function FreezerDashboard() {
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [detailDevice, setDetailDevice] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const commandPalette = useCommandPalette();
 
   // Handle device selection - open modal for details
   const handleSelectDevice = (deviceId: string | null) => {
@@ -83,6 +85,7 @@ export default function FreezerDashboard() {
           isOnline={isOnline}
           alertCount={alerts.length}
           pageIcon={LayoutGrid}
+          onSearchClick={commandPalette.open}
           breadcrumbs={[
             { label: "Home", href: "/", icon: Home },
             { label: "Dashboard", href: "/freezer" },
@@ -207,6 +210,14 @@ export default function FreezerDashboard() {
           selectDevice(null);
         }}
         getDeviceStatus={getDeviceStatus}
+      />
+
+      {/* Command Palette */}
+      <CommandPalette
+        isOpen={commandPalette.isOpen}
+        onClose={commandPalette.close}
+        devices={deviceList}
+        onSelectDevice={handleSelectDevice}
       />
     </div>
   );

@@ -107,19 +107,23 @@ export function FreezerChat({ fleetStatus }: FreezerChatProps) {
   }, []);
 
   // Auto-save current chat
+  // Note: We intentionally only depend on messages to avoid infinite loops
+  // since this effect modifies savedChats
   useEffect(() => {
     if (messages.length > 0) {
       const title = generateChatTitle(messages);
 
       if (currentChatId) {
         // Update existing chat
-        const updatedChats = savedChats.map((chat) =>
-          chat.id === currentChatId
-            ? { ...chat, messages, title }
-            : chat
-        );
-        setSavedChats(updatedChats);
-        localStorage.setItem(SAVED_CHATS_KEY, JSON.stringify(updatedChats));
+        setSavedChats((prevChats) => {
+          const updatedChats = prevChats.map((chat) =>
+            chat.id === currentChatId
+              ? { ...chat, messages, title }
+              : chat
+          );
+          localStorage.setItem(SAVED_CHATS_KEY, JSON.stringify(updatedChats));
+          return updatedChats;
+        });
       } else {
         // Create new chat
         const newChat: SavedChat = {
@@ -128,12 +132,15 @@ export function FreezerChat({ fleetStatus }: FreezerChatProps) {
           messages,
           savedAt: new Date().toISOString(),
         };
-        const updatedChats = [newChat, ...savedChats];
-        setSavedChats(updatedChats);
+        setSavedChats((prevChats) => {
+          const updatedChats = [newChat, ...prevChats];
+          localStorage.setItem(SAVED_CHATS_KEY, JSON.stringify(updatedChats));
+          return updatedChats;
+        });
         setCurrentChatId(newChat.id);
-        localStorage.setItem(SAVED_CHATS_KEY, JSON.stringify(updatedChats));
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
   // Generate title from first user message

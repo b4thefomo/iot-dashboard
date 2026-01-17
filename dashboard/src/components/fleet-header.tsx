@@ -48,7 +48,7 @@ export function FleetHeader({
       <div className="h-12 flex items-center px-6 border-b">
         <Breadcrumb>
           <BreadcrumbList>
-            {breadcrumbs.map((item, index) => (
+            {breadcrumbs.map((item) => (
               <React.Fragment key={item.label}>
                 <BreadcrumbItem>
                   <BreadcrumbLink asChild>

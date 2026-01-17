@@ -59,7 +59,7 @@ function parseSuggestedActions(content: string): { cleanContent: string; actions
     const actionLines = suggestedMatch[1].split("\n").filter(line => line.trim().startsWith("-"));
 
     for (const line of actionLines) {
-      const cleanLine = line.replace(/^-\s*/, "").replace(/[\p{Emoji}]/gu, "").trim();
+      const cleanLine = line.replace(/^-\s*/, "").replace(/[^\x00-\x7F]/g, "").trim();
       const lowerLine = cleanLine.toLowerCase();
 
       for (const [keyword, actionType] of Object.entries(actionPatterns)) {

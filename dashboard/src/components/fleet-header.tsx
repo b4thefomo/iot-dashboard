@@ -12,7 +12,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { Bell, Search, Wifi, WifiOff, Activity, Home, LayoutGrid, FileText, Code } from "lucide-react";
+import { Bell, Search, Wifi, WifiOff, Activity, Home, LayoutGrid } from "lucide-react";
 
 interface BreadcrumbItem {
   label: string;

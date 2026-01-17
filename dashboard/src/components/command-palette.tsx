@@ -14,10 +14,6 @@ import {
   Download,
   Thermometer,
   AlertTriangle,
-  MapPin,
-  Zap,
-  Settings,
-  HelpCircle,
 } from "lucide-react";
 
 interface CommandItem {

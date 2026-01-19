@@ -537,7 +537,13 @@ app.post('/api/data', (req, res) => {
 
     } else if (sensorType === 'motion_sensor' || sensorType === 'home_freezer') {
         // Home freezer monitoring from ESP32 with DS18B20 temp sensor
-        console.log("🏠🧊 HOME FREEZER:", data.device_id, data.external_temp_c + "°C");
+        console.log("🏠🧊 HOME FREEZER:", {
+            device_id: data.device_id,
+            temp: data.external_temp_c + "°C",
+            accel_x: data.accel_x,
+            accel_y: data.accel_y,
+            accel_z: data.accel_z
+        });
 
         const normalizedHomeFreezer = {
             device_id: data.device_id || 'HOME_FREEZER_01',

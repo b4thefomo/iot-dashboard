@@ -17,6 +17,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Snowflake,
+  Home,
+  Car,
+  Cpu,
+  LayoutGrid,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -28,6 +32,13 @@ interface NavItem {
   badge?: number;
   disabled?: boolean;
 }
+
+const switchDashboards: NavItem[] = [
+  { title: "Command Center", href: "/command-center", icon: LayoutGrid },
+  { title: "Weather", href: "/", icon: Cpu },
+  { title: "Car", href: "/car", icon: Car },
+  { title: "Home Freezer", href: "/home-freezer", icon: Home },
+];
 
 const navItems: NavItem[] = [
   {
@@ -111,6 +122,32 @@ export function FreezerSidebar({ collapsed = false, onToggleCollapse }: FreezerS
               <p className="text-xs text-slate-400">Asset Command</p>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Switch Dashboard */}
+      <div className="p-2 border-b border-slate-700">
+        {!collapsed && (
+          <p className="px-3 py-1 text-xs font-medium text-slate-500 uppercase">Switch Dashboard</p>
+        )}
+        <div className="flex flex-wrap gap-1">
+          {switchDashboards.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-2 px-2 py-1.5 text-xs text-slate-400 hover:bg-slate-800 hover:text-white transition-colors rounded",
+                  collapsed && "justify-center px-2"
+                )}
+                title={item.title}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {!collapsed && <span>{item.title}</span>}
+              </Link>
+            );
+          })}
         </div>
       </div>
 

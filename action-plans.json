@@ -1,0 +1,98 @@
+[
+  {
+    "id": "plan_1768616809111",
+    "title": "Critical Response: Glasgow Compressor & Regional Warnings",
+    "priority": "critical",
+    "items": [
+      {
+        "action": "Immediate dispatch of technician for compressor repair/replacement.",
+        "device_id": "FREEZER_003",
+        "deadline": "Within 2 hours",
+        "assignee": "Maintenance Team - Glasgow"
+      },
+      {
+        "action": "Close door and inspect door seals/alignment to prevent further temperature rise.",
+        "assignee": "On-site Staff - Manchester",
+        "device_id": "FREEZER_002",
+        "deadline": "Immediate"
+      },
+      {
+        "deadline": "By end of shift",
+        "assignee": "Maintenance Lead",
+        "action": "Investigate warning status and monitor temperature stability.",
+        "device_id": "FREEZER_004"
+      }
+    ],
+    "summary": "Action plan to address the compressor failure in Glasgow and high-temperature warnings in Manchester and Birmingham.",
+    "created_at": "2026-01-17T02:26:49.111Z",
+    "status": "in_progress",
+    "updated_at": "2026-01-17T02:28:02.238Z"
+  },
+  {
+    "id": "plan_1768617261087",
+    "title": "Fleet Recovery & Maintenance Plan",
+    "priority": "critical",
+    "items": [
+      {
+        "device_id": "FREEZER_003",
+        "assignee": "Service Dept",
+        "action": "Immediate technician dispatch for compressor repair/replacement.",
+        "deadline": "ASAP"
+      },
+      {
+        "assignee": "Glasgow Facility Manager",
+        "action": "Relocate all perishable inventory to backup storage to prevent loss.",
+        "device_id": "FREEZER_003",
+        "deadline": "Within 1 hour"
+      },
+      {
+        "deadline": "Next 24 hours",
+        "action": "Inspect for frost buildup and verify door seal integrity.",
+        "assignee": "Regional Maintenance",
+        "device_id": "FREEZER_004"
+      },
+      {
+        "assignee": "Ops Team",
+        "deadline": "EOD",
+        "device_id": "FREEZER_004",
+        "action": "Monitor power consumption for anomalies compared to healthy units."
+      }
+    ],
+    "summary": "Urgent response required for compressor failure in Glasgow and preventative maintenance for marginal temperature performance in Birmingham.",
+    "created_at": "2026-01-17T02:34:21.087Z",
+    "status": "active"
+  },
+  {
+    "id": "plan_1768694330829",
+    "title": "Emergency Recovery & Maintenance Plan - Jan 17",
+    "priority": "critical",
+    "items": [
+      {
+        "deadline": "Immediate (within 2 hours)",
+        "action": "Dispatch emergency technician for compressor repair and unit diagnostic",
+        "assignee": "Maintenance Team",
+        "device_id": "FREEZER_003"
+      },
+      {
+        "assignee": "Glasgow Site Manager",
+        "device_id": "FREEZER_003",
+        "action": "Relocate all perishable inventory to functional cold storage/backup units",
+        "deadline": "Immediate"
+      },
+      {
+        "assignee": "Field Technician",
+        "deadline": "Within 24 hours",
+        "device_id": "FREEZER_004",
+        "action": "Investigate Warning status and check for frost buildup or door seal integrity"
+      },
+      {
+        "assignee": "Maintenance Supervisor",
+        "action": "Perform a fleet-wide power efficiency audit once critical repairs are complete",
+        "deadline": "Next 48 hours"
+      }
+    ],
+    "summary": "Urgent response plan to address the compressor failure in Glasgow (FREEZER_003) and the warning status in Birmingham (FREEZER_004) to prevent stock loss and restore fleet temperature standards.",
+    "created_at": "2026-01-17T23:58:50.829Z",
+    "status": "active"
+  }
+]

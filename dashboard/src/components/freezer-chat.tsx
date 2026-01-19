@@ -30,12 +30,15 @@ import {
   FileText,
   Share2,
   CheckCircle,
+  Wrench,
+  ClipboardList,
 } from "lucide-react";
 import { Markdown } from "@/components/ui/markdown";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
+  toolsUsed?: string[];
 }
 
 interface SavedChat {
@@ -237,7 +240,11 @@ export function FreezerChat({ fleetStatus }: FreezerChatProps) {
       const data = await response.json();
       // Clean suggested actions from response (we'll add them as pills)
       const cleanContent = data.response.replace(/---\s*\n\*\*Suggested Actions:\*\*[\s\S]*$/i, "").trim();
-      setMessages((prev) => [...prev, { role: "assistant", content: cleanContent }]);
+      setMessages((prev) => [...prev, {
+        role: "assistant",
+        content: cleanContent,
+        toolsUsed: data.toolsUsed || undefined
+      }]);
     } catch (error) {
       console.error("Chat error:", error);
       setMessages((prev) => [
@@ -416,6 +423,26 @@ export function FreezerChat({ fleetStatus }: FreezerChatProps) {
                         <Bot className="h-4 w-4 text-slate-600" />
                       </div>
                       <div className="flex-1 min-w-0">
+                        {/* Tool execution indicator */}
+                        {message.toolsUsed && message.toolsUsed.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mb-2">
+                            {message.toolsUsed.map((tool, i) => (
+                              <span
+                                key={i}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200"
+                              >
+                                {tool === 'log_action_plan' ? (
+                                  <ClipboardList className="h-3 w-3" />
+                                ) : tool === 'send_email' ? (
+                                  <Mail className="h-3 w-3" />
+                                ) : (
+                                  <Wrench className="h-3 w-3" />
+                                )}
+                                {tool.replace(/_/g, ' ')}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                         <div className="bg-slate-50 rounded-2xl rounded-tl-none px-4 py-3 border-l-4 border-cyan-400">
                           <Markdown content={message.content} />
                         </div>

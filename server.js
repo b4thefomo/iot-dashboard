@@ -4,7 +4,9 @@ const { createServer } = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const multer = require('multer');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleGenAI, Type } = require('@google/genai');
+const fs = require('fs');
+const path = require('path');
 const PDFDocument = require('pdfkit');
 const { createClient } = require('@supabase/supabase-js');
 
@@ -216,6 +218,10 @@ const freezerHistory = {};     // { device_id: [readings] } - Per-device telemet
 const fleetStatus = {};        // { device_id: latestReading } - Latest per device
 let lastFleetDataReceived = null;
 
+// Home Freezer storage (for motion_sensor type from ESP32)
+const homeFreezerHistory = []; // Temperature readings from home freezer
+let lastHomeFreezerData = null;
+
 // Firmware storage for OTA updates
 const firmwareStore = {
     // device_type: { version, buffer, uploadedAt, size }
@@ -224,19 +230,237 @@ const firmwareStore = {
 let lastSensorDataReceived = null;
 let lastCarDataReceived = null;
 
-// Initialize Gemini
+// Initialize Gemini (new SDK)
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
 console.log("🔑 GEMINI_API_KEY:", GEMINI_KEY ? `Found (${GEMINI_KEY.slice(0, 8)}...${GEMINI_KEY.slice(-4)})` : "❌ NOT FOUND");
 
-let genAI = null;
-let model = null;
+let ai = null;
+const GEMINI_MODEL = "gemini-3-flash-preview";
 
 if (GEMINI_KEY) {
-    genAI = new GoogleGenerativeAI(GEMINI_KEY);
-    model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
-    console.log("✅ Gemini model initialized: gemini-3-flash-preview");
+    ai = new GoogleGenAI({ apiKey: GEMINI_KEY });
+    console.log("✅ Gemini AI initialized: " + GEMINI_MODEL);
 } else {
     console.log("⚠️ Gemini not initialized - API key missing");
+}
+
+// ==================== ACTION PLANS STORAGE ====================
+
+const ACTION_PLANS_FILE = path.join(__dirname, 'action-plans.json');
+
+// Load action plans from file
+function loadActionPlans() {
+    try {
+        if (fs.existsSync(ACTION_PLANS_FILE)) {
+            const data = fs.readFileSync(ACTION_PLANS_FILE, 'utf8');
+            return JSON.parse(data);
+        }
+    } catch (error) {
+        console.error("❌ Error loading action plans:", error.message);
+    }
+    return [];
+}
+
+// Save action plans to file
+function saveActionPlans(plans) {
+    try {
+        fs.writeFileSync(ACTION_PLANS_FILE, JSON.stringify(plans, null, 2));
+        return true;
+    } catch (error) {
+        console.error("❌ Error saving action plans:", error.message);
+        return false;
+    }
+}
+
+// Get active action plans
+function getActiveActionPlans() {
+    const plans = loadActionPlans();
+    return plans.filter(p => p.status === 'active');
+}
+
+// ==================== TOOL DECLARATIONS ====================
+
+const logActionPlanDeclaration = {
+    name: 'log_action_plan',
+    description: 'Creates and saves an action plan for addressing fleet issues. Use this when the operator requests an action plan or when critical issues need documented response steps.',
+    parameters: {
+        type: Type.OBJECT,
+        properties: {
+            title: {
+                type: Type.STRING,
+                description: 'Brief title for the action plan (e.g., "Critical Temperature Response")'
+            },
+            priority: {
+                type: Type.STRING,
+                enum: ['low', 'medium', 'high', 'critical'],
+                description: 'Priority level of the action plan'
+            },
+            items: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        device_id: { type: Type.STRING, description: 'Device ID if applicable' },
+                        action: { type: Type.STRING, description: 'Specific action to take' },
+                        deadline: { type: Type.STRING, description: 'Suggested deadline' },
+                        assignee: { type: Type.STRING, description: 'Suggested assignee or team' }
+                    }
+                },
+                description: 'List of action items'
+            },
+            summary: {
+                type: Type.STRING,
+                description: 'Brief summary of why this plan was created'
+            }
+        },
+        required: ['title', 'priority', 'items', 'summary']
+    }
+};
+
+const getActionPlansDeclaration = {
+    name: 'get_action_plans',
+    description: 'Retrieves existing action plans. Use this when the operator asks about current plans, wants to review tasks, or you need context about ongoing work.',
+    parameters: {
+        type: Type.OBJECT,
+        properties: {
+            status: {
+                type: Type.STRING,
+                enum: ['active', 'completed', 'all'],
+                description: 'Filter by plan status'
+            },
+            limit: {
+                type: Type.NUMBER,
+                description: 'Maximum number of plans to retrieve'
+            }
+        },
+        required: []
+    }
+};
+
+const sendEmailDeclaration = {
+    name: 'send_email',
+    description: 'Sends an email notification to team members. Use this when the operator requests to notify the team, share a report, or alert about critical issues.',
+    parameters: {
+        type: Type.OBJECT,
+        properties: {
+            to: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+                description: 'Email recipients (e.g., ["maintenance@company.com", "ops@company.com"])'
+            },
+            subject: {
+                type: Type.STRING,
+                description: 'Email subject line'
+            },
+            body: {
+                type: Type.STRING,
+                description: 'Email body content (plain text or simple HTML)'
+            },
+            priority: {
+                type: Type.STRING,
+                enum: ['normal', 'high'],
+                description: 'Email priority'
+            },
+            attachReport: {
+                type: Type.BOOLEAN,
+                description: 'Whether to attach the current fleet status report'
+            }
+        },
+        required: ['to', 'subject', 'body']
+    }
+};
+
+// Tools array for Gemini
+const fleetTools = [{
+    functionDeclarations: [
+        logActionPlanDeclaration,
+        getActionPlansDeclaration,
+        sendEmailDeclaration
+    ]
+}];
+
+// ==================== TOOL EXECUTION HANDLERS ====================
+
+async function executeLogActionPlan(args) {
+    const plan = {
+        id: `plan_${Date.now()}`,
+        title: args.title,
+        priority: args.priority,
+        items: args.items || [],
+        summary: args.summary,
+        created_at: new Date().toISOString(),
+        status: 'active'
+    };
+
+    const plans = loadActionPlans();
+    plans.push(plan);
+
+    if (saveActionPlans(plans)) {
+        console.log(`📋 Action plan created: ${plan.id} - ${plan.title}`);
+        return {
+            success: true,
+            plan_id: plan.id,
+            message: `Action plan "${plan.title}" created successfully with ${plan.items.length} items.`
+        };
+    }
+    return { success: false, error: 'Failed to save action plan' };
+}
+
+async function executeGetActionPlans(args) {
+    let plans = loadActionPlans();
+
+    // Filter by status if provided
+    if (args.status && args.status !== 'all') {
+        plans = plans.filter(p => p.status === args.status);
+    }
+
+    // Apply limit if provided
+    if (args.limit && args.limit > 0) {
+        plans = plans.slice(0, args.limit);
+    }
+
+    return {
+        success: true,
+        plans: plans,
+        count: plans.length
+    };
+}
+
+async function executeSendEmail(args) {
+    // For now, log the email (can integrate with SendGrid/Nodemailer later)
+    const emailLog = {
+        id: `email_${Date.now()}`,
+        to: args.to,
+        subject: args.subject,
+        body: args.body,
+        priority: args.priority || 'normal',
+        attachReport: args.attachReport || false,
+        sent_at: new Date().toISOString(),
+        status: 'logged' // Would be 'sent' with real email integration
+    };
+
+    console.log(`📧 Email logged: To: ${args.to.join(', ')}, Subject: ${args.subject}`);
+
+    return {
+        success: true,
+        message: `Email notification logged successfully. Recipients: ${args.to.join(', ')}`,
+        email_id: emailLog.id,
+        note: 'Email integration pending - notification has been logged for manual follow-up.'
+    };
+}
+
+// Execute tool call by name
+async function executeToolCall(name, args) {
+    switch (name) {
+        case 'log_action_plan':
+            return await executeLogActionPlan(args);
+        case 'get_action_plans':
+            return await executeGetActionPlans(args);
+        case 'send_email':
+            return await executeSendEmail(args);
+        default:
+            return { success: false, error: `Unknown tool: ${name}` };
+    }
 }
 
 // Middleware
@@ -310,6 +534,28 @@ app.post('/api/data', (req, res) => {
         lastSensorDataReceived = new Date();
         io.emit('sensorData', normalizedWeather);
         addToMasterHistory(normalizedWeather, 'weather');
+
+    } else if (sensorType === 'motion_sensor' || sensorType === 'home_freezer') {
+        // Home freezer monitoring from ESP32 with DS18B20 temp sensor
+        console.log("🏠🧊 HOME FREEZER:", data.device_id, data.external_temp_c + "°C");
+
+        const normalizedHomeFreezer = {
+            device_id: data.device_id || 'HOME_FREEZER_01',
+            temp_c: data.external_temp_c,
+            accel_x: data.accel_x || 0,
+            accel_y: data.accel_y || 0,
+            accel_z: data.accel_z || 0,
+            firmware_version: data.firmware_version,
+            timestamp: data.server_timestamp,
+            raw_timestamp: data.timestamp
+        };
+
+        homeFreezerHistory.push(normalizedHomeFreezer);
+        if (homeFreezerHistory.length > MAX_HISTORY) homeFreezerHistory.shift();
+
+        lastHomeFreezerData = new Date();
+        io.emit('homeFreezerData', normalizedHomeFreezer);
+        addToMasterHistory(normalizedHomeFreezer, 'home_freezer');
 
     } else if (sensorType === 'freezer') {
         console.log("🧊 FREEZER:", data.device_id, data.temp_cabinet + "°C", data.fault);
@@ -444,8 +690,8 @@ app.post('/api/chat', async (req, res) => {
     const { message } = req.body;
     if (!message) return res.status(400).json({ error: "Message is required" });
 
-    if (!model) {
-        console.log("❌ Gemini model not initialized");
+    if (!ai) {
+        console.log("❌ Gemini not initialized");
         return res.status(500).json({ error: "AI not configured - missing API key" });
     }
 
@@ -461,8 +707,11 @@ User: ${message}
 Provide a helpful, concise response.`;
 
         console.log("🤖 Calling Gemini API...");
-        const result = await model.generateContent(prompt);
-        const text = result.response.text();
+        const result = await ai.models.generateContent({
+            model: GEMINI_MODEL,
+            contents: prompt
+        });
+        const text = result.text;
         console.log("✅ Gemini response received");
         res.json({ response: text });
     } catch (error) {
@@ -520,6 +769,10 @@ app.post('/api/car/chat', async (req, res) => {
     const { message } = req.body;
     if (!message) return res.status(400).json({ error: "Message is required" });
 
+    if (!ai) {
+        return res.status(500).json({ error: "AI not configured - missing API key" });
+    }
+
     try {
         const context = buildCarContext();
         const prompt = `You are an AI assistant for a car OBD dashboard. Help users understand their vehicle data.
@@ -531,8 +784,11 @@ User: ${message}
 
 Provide a helpful, concise response about driving patterns, vehicle health, or performance.`;
 
-        const result = await model.generateContent(prompt);
-        const text = result.response.text();
+        const result = await ai.models.generateContent({
+            model: GEMINI_MODEL,
+            contents: prompt
+        });
+        const text = result.text;
         res.json({ response: text });
     } catch (error) {
         console.error("Gemini API error:", error);
@@ -580,6 +836,10 @@ app.post('/api/unified-chat', async (req, res) => {
     const { message } = req.body;
     if (!message) return res.status(400).json({ error: "Message is required" });
 
+    if (!ai) {
+        return res.status(500).json({ error: "AI not configured - missing API key" });
+    }
+
     try {
         const context = buildUnifiedContext();
         const prompt = `You are an AI assistant for a unified IoT command center. You have access to BOTH weather station data AND car telemetry data. You can:
@@ -606,8 +866,11 @@ IMPORTANT: At the end of your response, always include a "Suggested Actions" sec
 
 Choose actions relevant to your response content. Possible actions include: notify team, share report, download CSV, generate PDF report, create action plan, schedule maintenance, set alert threshold, export data, review history, contact support.`;
 
-        const result = await model.generateContent(prompt);
-        const text = result.response.text();
+        const result = await ai.models.generateContent({
+            model: GEMINI_MODEL,
+            contents: prompt
+        });
+        const text = result.text;
 
         res.json({
             response: text,
@@ -735,17 +998,18 @@ app.get('/api/freezer/:device_id/history', (req, res) => {
     });
 });
 
-// Fleet AI chat
+// Fleet AI chat with tool calling
 app.post('/api/freezer/chat', async (req, res) => {
     const { message, conversationHistory = [] } = req.body;
     if (!message) return res.status(400).json({ error: "Message is required" });
 
-    if (!model) {
+    if (!ai) {
         return res.status(500).json({ error: "AI not configured - missing API key" });
     }
 
     try {
         const context = buildFleetContext();
+        const existingPlans = getActiveActionPlans();
 
         // Format conversation history for context
         let historyContext = "";
@@ -757,12 +1021,20 @@ app.post('/api/freezer/chat', async (req, res) => {
                 "\n\n---\n";
         }
 
+        // Include existing action plans in context
+        let actionPlansContext = "";
+        if (existingPlans.length > 0) {
+            actionPlansContext = "\n\nExisting Action Plans:\n" +
+                existingPlans.map(p => `- ${p.title} (${p.priority}, ${p.items.length} items, created: ${new Date(p.created_at).toLocaleString()})`).join('\n') +
+                "\n\n---\n";
+        }
+
         const isFollowUp = conversationHistory.length > 0;
         const followUpInstruction = isFollowUp
             ? `\n\nIMPORTANT - FOLLOW-UP CONTEXT: This is message #${conversationHistory.length + 1} in an ongoing conversation. The operator's current message "${message}" is responding to your previous answer above. If they say "yes", "ok", "sure", "go ahead", "please do", "show me", etc., they are confirming or requesting what you offered in your last response. DO NOT repeat the same analysis or ask again - proceed directly with the specific action, data, or information you previously offered to provide.`
             : '';
 
-        const prompt = `You are an AI assistant for the Subzero freezer fleet monitoring system. You help operators monitor and diagnose issues across a fleet of commercial freezers.
+        const systemPrompt = `You are an AI assistant for the Subzero freezer fleet monitoring system. You help operators monitor and diagnose issues across a fleet of commercial freezers.
 
 Your responsibilities:
 - Monitor temperature anomalies (freezers should be below -15°C)
@@ -771,8 +1043,20 @@ Your responsibilities:
 - Monitor frost buildup (may need defrost cycle)
 - Identify failing units before complete breakdown
 
+You have access to the following tools:
+1. log_action_plan - Create and save action plans when operators request them or when critical issues need documented steps
+2. get_action_plans - Retrieve existing action plans when operators ask about current tasks or ongoing work
+3. send_email - Send email notifications to team members for alerts or reports
+
+When the operator says things like:
+- "Create an action plan" → Use log_action_plan
+- "What are our current action items?" → Use get_action_plans
+- "Notify the maintenance team" → Use send_email
+- "Email the team about this" → Use send_email
+
 Current Fleet Context:
 ${context}
+${actionPlansContext}
 ${historyContext}
 Current Operator Message: ${message}
 ${followUpInstruction}
@@ -790,16 +1074,74 @@ IMPORTANT: At the end of your response, always include a "Suggested Actions" sec
 
 Choose actions relevant to your response content. Possible actions include: notify team, share report, download CSV, generate PDF report, create action plan, schedule maintenance, dispatch technician, set alert threshold, export data, review unit history, contact support, initiate defrost cycle.`;
 
-        const result = await model.generateContent(prompt);
-        const text = result.response.text();
+        // Call Gemini with tools
+        const result = await ai.models.generateContent({
+            model: GEMINI_MODEL,
+            contents: systemPrompt,
+            config: {
+                tools: fleetTools
+            }
+        });
+
+        // Debug: Log response structure
+        console.log('🔍 Gemini response keys:', Object.keys(result));
+        console.log('🔍 Has functionCalls:', !!result.functionCalls, result.functionCalls?.length || 0);
+        if (result.candidates && result.candidates[0]) {
+            console.log('🔍 Candidate content parts:', result.candidates[0].content?.parts?.map(p => Object.keys(p)));
+        }
+
+        // Check for function calls
+        let toolsUsed = [];
+        let finalText = result.text;
+
+        if (result.functionCalls && result.functionCalls.length > 0) {
+            const toolResults = [];
+
+            for (const functionCall of result.functionCalls) {
+                console.log(`🔧 Tool Call: ${functionCall.name}(${JSON.stringify(functionCall.args)})`);
+                const toolResult = await executeToolCall(functionCall.name, functionCall.args);
+                toolResults.push({
+                    name: functionCall.name,
+                    response: toolResult
+                });
+                toolsUsed.push(functionCall.name);
+            }
+
+            // Send results back to Gemini for final response
+            const contents = [
+                { role: 'user', parts: [{ text: systemPrompt }] },
+                result.candidates[0].content,
+                {
+                    role: 'user',
+                    parts: toolResults.map(r => ({
+                        functionResponse: {
+                            name: r.name,
+                            response: r.response
+                        }
+                    }))
+                }
+            ];
+
+            const finalResult = await ai.models.generateContent({
+                model: GEMINI_MODEL,
+                contents: contents,
+                config: {
+                    tools: fleetTools
+                }
+            });
+
+            finalText = finalResult.text;
+        }
 
         res.json({
-            response: text,
+            response: finalText,
+            toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
             context: {
                 totalDevices: Object.keys(fleetStatus).length,
                 alertCount: Object.values(fleetStatus).filter(d =>
                     d.fault !== 'NORMAL' || d.door_open || d.temp_cabinet > -5
-                ).length
+                ).length,
+                activeActionPlans: existingPlans.length
             }
         });
     } catch (error) {
@@ -836,6 +1178,251 @@ app.get('/api/fleet/summary', (req, res) => {
             highFrost: devices.filter(d => d.frost_level > 0.5).length
         }
     });
+});
+
+// ==================== HOME FREEZER ENDPOINTS ====================
+
+function buildHomeFreezerContext() {
+    if (homeFreezerHistory.length === 0) {
+        return "No home freezer data has been received yet.";
+    }
+
+    const latest = homeFreezerHistory[homeFreezerHistory.length - 1];
+    const temps = homeFreezerHistory.map(d => d.temp_c).filter(t => t !== undefined && t !== -127);
+
+    if (temps.length === 0) {
+        return "Home freezer temperature data is incomplete.";
+    }
+
+    const avgTemp = temps.reduce((a, b) => a + b, 0) / temps.length;
+    const minTemp = Math.min(...temps);
+    const maxTemp = Math.max(...temps);
+
+    // Determine status
+    let status = '🟢 NORMAL';
+    if (latest.temp_c > -10) status = '🔴 CRITICAL - TOO WARM';
+    else if (latest.temp_c > -15) status = '🟡 WARNING - WARMING UP';
+    else if (latest.temp_c < -25) status = '🟡 WARNING - TOO COLD';
+
+    return `
+HOME FREEZER STATUS
+====================
+Device: ${latest.device_id}
+Current Temperature: ${latest.temp_c}°C
+Status: ${status}
+Firmware: ${latest.firmware_version || 'Unknown'}
+Last Reading: ${latest.timestamp}
+
+Temperature Stats (${temps.length} readings):
+- Average: ${avgTemp.toFixed(1)}°C
+- Min: ${minTemp.toFixed(1)}°C
+- Max: ${maxTemp.toFixed(1)}°C
+
+Motion Detection:
+- Accel X: ${latest.accel_x}
+- Accel Y: ${latest.accel_y}
+- Accel Z: ${latest.accel_z}
+
+Recommended Range: -18°C to -22°C for optimal food preservation
+    `.trim();
+}
+
+app.get('/api/home-freezer/history', (req, res) => {
+    res.json({
+        history: homeFreezerHistory,
+        lastDataReceived: lastHomeFreezerData
+    });
+});
+
+app.get('/api/home-freezer/status', (req, res) => {
+    const now = new Date();
+    const isOnline = lastHomeFreezerData && (now - lastHomeFreezerData) < 30000;
+    const latest = homeFreezerHistory.length > 0 ? homeFreezerHistory[homeFreezerHistory.length - 1] : null;
+
+    let status = 'unknown';
+    if (latest) {
+        if (latest.temp_c > -10) status = 'critical';
+        else if (latest.temp_c > -15) status = 'warning';
+        else if (latest.temp_c < -25) status = 'warning';
+        else status = 'healthy';
+    }
+
+    res.json({
+        isOnline,
+        lastDataReceived: lastHomeFreezerData,
+        readingsCount: homeFreezerHistory.length,
+        latest,
+        status
+    });
+});
+
+app.post('/api/home-freezer/chat', async (req, res) => {
+    const { message, conversationHistory = [] } = req.body;
+    if (!message) return res.status(400).json({ error: "Message is required" });
+
+    if (!ai) {
+        return res.status(500).json({ error: "AI not configured - missing API key" });
+    }
+
+    try {
+        const context = buildHomeFreezerContext();
+
+        // Format conversation history for context
+        let historyContext = "";
+        if (conversationHistory.length > 0) {
+            historyContext = "\n\nPrevious Conversation:\n" +
+                conversationHistory.map(msg =>
+                    `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`
+                ).join('\n\n') +
+                "\n\n---\n";
+        }
+
+        const systemPrompt = `You are an AI assistant for a home freezer monitoring system. You help users monitor their home freezer temperature and ensure food safety.
+
+Your responsibilities:
+- Monitor freezer temperature (should be between -18°C to -22°C for optimal food preservation)
+- Alert on temperature anomalies (too warm = food spoilage risk, too cold = frost buildup)
+- Track motion/vibration data (could indicate compressor issues or door openings)
+- Provide food safety advice based on temperature history
+
+Temperature Guidelines:
+- Ideal: -18°C to -22°C
+- Warning (Warm): Above -15°C - food may start to thaw
+- Critical (Warm): Above -10°C - immediate action needed
+- Warning (Cold): Below -25°C - excessive energy use, potential frost buildup
+
+Current Freezer Context:
+${context}
+${historyContext}
+User Message: ${message}
+
+Provide a helpful, friendly response about the home freezer status. If there are concerns, explain them clearly and suggest actions.`;
+
+        const result = await ai.models.generateContent({
+            model: GEMINI_MODEL,
+            contents: systemPrompt
+        });
+
+        const text = result.text;
+        res.json({
+            response: text,
+            context: {
+                readingsCount: homeFreezerHistory.length,
+                lastReading: homeFreezerHistory.length > 0 ? homeFreezerHistory[homeFreezerHistory.length - 1] : null
+            }
+        });
+    } catch (error) {
+        console.error("Gemini API error:", error);
+        res.status(500).json({ error: "Failed to generate response" });
+    }
+});
+
+// ==================== ACTION PLANS API ENDPOINTS ====================
+
+// Get all action plans
+app.get('/api/action-plans', (req, res) => {
+    const status = req.query.status || 'all';
+    let plans = loadActionPlans();
+
+    if (status !== 'all') {
+        plans = plans.filter(p => p.status === status);
+    }
+
+    res.json({
+        plans,
+        count: plans.length,
+        activeCount: plans.filter(p => p.status === 'active').length
+    });
+});
+
+// Get a specific action plan
+app.get('/api/action-plans/:id', (req, res) => {
+    const { id } = req.params;
+    const plans = loadActionPlans();
+    const plan = plans.find(p => p.id === id);
+
+    if (!plan) {
+        return res.status(404).json({ error: "Action plan not found" });
+    }
+
+    res.json(plan);
+});
+
+// Create a new action plan (manual, not via AI)
+app.post('/api/action-plans', (req, res) => {
+    const { title, priority, items, summary } = req.body;
+
+    if (!title || !priority) {
+        return res.status(400).json({ error: "Title and priority are required" });
+    }
+
+    const plan = {
+        id: `plan_${Date.now()}`,
+        title,
+        priority,
+        items: items || [],
+        summary: summary || '',
+        created_at: new Date().toISOString(),
+        status: 'active'
+    };
+
+    const plans = loadActionPlans();
+    plans.push(plan);
+
+    if (saveActionPlans(plans)) {
+        console.log(`📋 Action plan created manually: ${plan.id} - ${plan.title}`);
+        res.status(201).json(plan);
+    } else {
+        res.status(500).json({ error: "Failed to save action plan" });
+    }
+});
+
+// Update an action plan
+app.patch('/api/action-plans/:id', (req, res) => {
+    const { id } = req.params;
+    const updates = req.body;
+    const plans = loadActionPlans();
+    const planIndex = plans.findIndex(p => p.id === id);
+
+    if (planIndex === -1) {
+        return res.status(404).json({ error: "Action plan not found" });
+    }
+
+    // Update allowed fields
+    const allowedFields = ['title', 'priority', 'items', 'summary', 'status'];
+    for (const field of allowedFields) {
+        if (updates[field] !== undefined) {
+            plans[planIndex][field] = updates[field];
+        }
+    }
+    plans[planIndex].updated_at = new Date().toISOString();
+
+    if (saveActionPlans(plans)) {
+        console.log(`📋 Action plan updated: ${id}`);
+        res.json(plans[planIndex]);
+    } else {
+        res.status(500).json({ error: "Failed to update action plan" });
+    }
+});
+
+// Delete an action plan
+app.delete('/api/action-plans/:id', (req, res) => {
+    const { id } = req.params;
+    let plans = loadActionPlans();
+    const planIndex = plans.findIndex(p => p.id === id);
+
+    if (planIndex === -1) {
+        return res.status(404).json({ error: "Action plan not found" });
+    }
+
+    const deletedPlan = plans.splice(planIndex, 1)[0];
+
+    if (saveActionPlans(plans)) {
+        console.log(`📋 Action plan deleted: ${id}`);
+        res.json({ message: "Action plan deleted", plan: deletedPlan });
+    } else {
+        res.status(500).json({ error: "Failed to delete action plan" });
+    }
 });
 
 // ==================== FLEET EXPORT ENDPOINTS ====================
@@ -1229,7 +1816,13 @@ app.get('/api/debug', (req, res) => {
         gemini: {
             apiKeyPresent: !!GEMINI_KEY,
             apiKeyPreview: GEMINI_KEY ? `${GEMINI_KEY.slice(0, 8)}...` : null,
-            modelInitialized: !!model
+            aiInitialized: !!ai,
+            model: GEMINI_MODEL,
+            toolsAvailable: ['log_action_plan', 'get_action_plans', 'send_email']
+        },
+        actionPlans: {
+            activeCount: getActiveActionPlans().length,
+            totalCount: loadActionPlans().length
         },
         cors: CORS_ORIGINS,
         firmware: {
@@ -1260,6 +1853,12 @@ io.on('connection', (socket) => {
         lastDataReceived: lastFleetDataReceived
     });
 
+    // Send home freezer data
+    socket.emit('initialHomeFreezerData', {
+        history: homeFreezerHistory,
+        lastDataReceived: lastHomeFreezerData
+    });
+
     socket.on('disconnect', () => {
         console.log('📴 Dashboard client disconnected:', socket.id);
     });
@@ -1273,7 +1872,9 @@ httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`   - sensor_type: 'car_telemetry' → Car Dashboard`);
     console.log(`   - sensor_type: 'weather_station' → Weather Dashboard`);
     console.log(`   - sensor_type: 'freezer' → Subzero Fleet Dashboard`);
+    console.log(`   - sensor_type: 'motion_sensor' → Home Freezer Dashboard`);
     console.log(`👉 Dashboard: http://localhost:4001`);
     console.log(`👉 Command Center: http://localhost:4001/command-center`);
     console.log(`👉 Subzero Fleet: http://localhost:4001/freezer`);
+    console.log(`👉 Home Freezer: http://localhost:4001/home-freezer`);
 });

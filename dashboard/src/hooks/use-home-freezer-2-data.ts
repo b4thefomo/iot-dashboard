@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { getSocket } from "@/lib/socket";
 
-export interface HomeFreezerReading {
+export interface HomeFreezer2Reading {
   device_id: string;
   temp_c: number;
   // Door sensor data
@@ -18,9 +18,9 @@ export interface HomeFreezerReading {
   raw_timestamp: number;
 }
 
-export interface HomeFreezerState {
-  history: HomeFreezerReading[];
-  latest: HomeFreezerReading | null;
+export interface HomeFreezer2State {
+  history: HomeFreezer2Reading[];
+  latest: HomeFreezer2Reading | null;
   isConnected: boolean;
   isOnline: boolean;
   lastDataReceived: string | null;
@@ -29,8 +29,8 @@ export interface HomeFreezerState {
 
 const ONLINE_TIMEOUT = 30000; // 30 seconds
 
-export function useHomeFreezerData() {
-  const [state, setState] = useState<HomeFreezerState>({
+export function useHomeFreezer2Data() {
+  const [state, setState] = useState<HomeFreezer2State>({
     history: [],
     latest: null,
     isConnected: false,
@@ -57,8 +57,8 @@ export function useHomeFreezerData() {
       setState((prev) => ({ ...prev, isConnected: false }));
     };
 
-    const handleInitialHomeFreezerData = (data: {
-      history: HomeFreezerReading[];
+    const handleInitialHomeFreezer2Data = (data: {
+      history: HomeFreezer2Reading[];
       lastDataReceived: string | null;
     }) => {
       const history = data.history || [];
@@ -76,7 +76,7 @@ export function useHomeFreezerData() {
       }));
     };
 
-    const handleHomeFreezerData = (reading: HomeFreezerReading) => {
+    const handleHomeFreezer2Data = (reading: HomeFreezer2Reading) => {
       setState((prev) => {
         const newHistory = [...prev.history, reading];
         // Keep max 100 readings
@@ -95,8 +95,8 @@ export function useHomeFreezerData() {
 
     socket.on("connect", handleConnect);
     socket.on("disconnect", handleDisconnect);
-    socket.on("initialHomeFreezerData", handleInitialHomeFreezerData);
-    socket.on("homeFreezerData", handleHomeFreezerData);
+    socket.on("initialHomeFreezer2Data", handleInitialHomeFreezer2Data);
+    socket.on("homeFreezer2Data", handleHomeFreezer2Data);
 
     // Set initial connection state
     if (socket.connected) {
@@ -116,8 +116,8 @@ export function useHomeFreezerData() {
     return () => {
       socket.off("connect", handleConnect);
       socket.off("disconnect", handleDisconnect);
-      socket.off("initialHomeFreezerData", handleInitialHomeFreezerData);
-      socket.off("homeFreezerData", handleHomeFreezerData);
+      socket.off("initialHomeFreezer2Data", handleInitialHomeFreezer2Data);
+      socket.off("homeFreezer2Data", handleHomeFreezer2Data);
       clearInterval(interval);
     };
   }, [getStatus]);

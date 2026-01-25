@@ -21,6 +21,7 @@ import {
   Car,
   Cpu,
   LayoutGrid,
+  Heart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -37,7 +38,8 @@ const switchDashboards: NavItem[] = [
   { title: "Command Center", href: "/command-center", icon: LayoutGrid },
   { title: "Weather", href: "/", icon: Cpu },
   { title: "Car", href: "/car", icon: Car },
-  { title: "Home Freezer", href: "/home-freezer", icon: Home },
+  { title: "Home Freezers", href: "/home-freezer", icon: Home },
+  { title: "Body Tracker", href: "/body-tracker", icon: Heart },
 ];
 
 const navItems: NavItem[] = [

@@ -5,14 +5,13 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { HomeFreezerReading } from "@/hooks/use-home-freezer-data";
-import { HomeFreezer2Reading } from "@/hooks/use-home-freezer-2-data";
+import { BodyTrackerReading } from "@/hooks/use-body-tracker-data";
 import {
   Send,
   Bot,
   User,
   Loader2,
-  Snowflake,
+  Heart,
 } from "lucide-react";
 import { Markdown } from "@/components/ui/markdown";
 
@@ -21,31 +20,24 @@ interface Message {
   content: string;
 }
 
-interface HomeFreezerChatProps {
-  freezer1Latest: HomeFreezerReading | null;
-  freezer1History: HomeFreezerReading[];
-  freezer2Latest: HomeFreezer2Reading | null;
-  freezer2History: HomeFreezer2Reading[];
+interface BodyTrackerChatProps {
+  latest: BodyTrackerReading | null;
+  history: BodyTrackerReading[];
 }
 
-export function HomeFreezerChat({
-  freezer1Latest,
-  freezer1History,
-  freezer2Latest,
-  freezer2History
-}: HomeFreezerChatProps) {
+export function BodyTrackerChat({ latest, history }: BodyTrackerChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
   const suggestedQuestions = [
-    "How are both freezers?",
-    "Compare the temperatures",
-    "Any concerns?",
+    "How's my running form?",
+    "What zone should I train in?",
+    "Am I recovered enough?",
+    "Analyze my HRV",
   ];
 
-  // Send message
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
 
@@ -61,7 +53,7 @@ export function HomeFreezerChat({
         content: msg.content,
       }));
 
-      const response = await fetch(`${apiUrl}/api/home-freezer/chat`, {
+      const response = await fetch(`${apiUrl}/api/body-tracker/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: userMessage, conversationHistory }),
@@ -82,7 +74,6 @@ export function HomeFreezerChat({
     }
   };
 
-  // Auto-scroll
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -96,26 +87,12 @@ export function HomeFreezerChat({
     }
   };
 
-  // Show quick status of both freezers
-  const freezer1Online = freezer1Latest !== null;
-  const freezer2Online = freezer2Latest !== null;
-
   return (
     <div className="flex flex-col h-full bg-white rounded-xl border shadow-sm">
       {/* Header */}
-      <div className="px-4 py-3 border-b flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <Snowflake className="h-5 w-5 text-cyan-500" />
-          <h3 className="font-semibold text-slate-900">Freezer Assistant</h3>
-        </div>
-        <div className="flex gap-2 mt-2 text-xs">
-          <span className={`px-2 py-0.5 rounded ${freezer1Online ? 'bg-cyan-100 text-cyan-700' : 'bg-slate-100 text-slate-500'}`}>
-            F1: {freezer1Latest ? `${freezer1Latest.temp_c.toFixed(1)}°C` : 'Offline'}
-          </span>
-          <span className={`px-2 py-0.5 rounded ${freezer2Online ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}>
-            F2: {freezer2Latest ? `${freezer2Latest.temp_c.toFixed(1)}°C` : 'Offline'}
-          </span>
-        </div>
+      <div className="px-4 py-3 border-b flex items-center gap-2 flex-shrink-0">
+        <Heart className="h-5 w-5 text-rose-500" />
+        <h3 className="font-semibold text-slate-900">Fitness Coach</h3>
       </div>
 
       {/* Messages */}
@@ -125,7 +102,7 @@ export function HomeFreezerChat({
             <div className="text-center py-8">
               <Bot className="h-12 w-12 mx-auto mb-3 text-slate-300" />
               <p className="text-sm text-slate-500 mb-4">
-                Ask me about your freezers
+                Ask about your workout
               </p>
               <div className="flex flex-wrap gap-2 justify-center">
                 {suggestedQuestions.map((q) => (
@@ -149,8 +126,8 @@ export function HomeFreezerChat({
                   className={`flex gap-2 ${message.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                   {message.role === "assistant" && (
-                    <div className="w-7 h-7 bg-cyan-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <Bot className="h-4 w-4 text-cyan-600" />
+                    <div className="w-7 h-7 bg-rose-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Bot className="h-4 w-4 text-rose-600" />
                     </div>
                   )}
                   <div
@@ -175,8 +152,8 @@ export function HomeFreezerChat({
               ))}
               {isLoading && (
                 <div className="flex gap-2">
-                  <div className="w-7 h-7 bg-cyan-100 rounded-lg flex items-center justify-center">
-                    <Bot className="h-4 w-4 text-cyan-600" />
+                  <div className="w-7 h-7 bg-rose-100 rounded-lg flex items-center justify-center">
+                    <Bot className="h-4 w-4 text-rose-600" />
                   </div>
                   <div className="bg-slate-50 rounded-xl rounded-tl-none px-3 py-2 border">
                     <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
@@ -191,7 +168,7 @@ export function HomeFreezerChat({
       {/* Input */}
       <div className="px-4 py-3 border-t flex gap-2">
         <Input
-          placeholder="Ask about your freezers..."
+          placeholder="Ask about your workout..."
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}

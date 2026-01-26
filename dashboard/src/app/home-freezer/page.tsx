@@ -34,6 +34,7 @@ import {
   DoorOpen,
   DoorClosed,
 } from "lucide-react";
+import { GuardianLedgerButton } from "@/components/guardian-ledger-button";
 import Link from "next/link";
 
 const chartConfig1 = {
@@ -110,6 +111,9 @@ export default function HomeFreezerDashboard() {
               </div>
             </div>
             <div className="flex items-center gap-3">
+              <GuardianLedgerButton
+                deviceId={activeTab === "freezer1" ? "home_freezer_sim" : "FREEZER_MAIN"}
+              />
               <Link href="/" className="text-sm text-slate-500 hover:text-slate-700 flex items-center gap-1">
                 <Home className="h-4 w-4" />
                 Dashboard

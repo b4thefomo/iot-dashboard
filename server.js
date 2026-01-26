@@ -190,6 +190,87 @@ async function checkAndCreateAlerts(readingData, readingId) {
     }
 }
 
+// Load latest fleet readings from Supabase on server startup
+async function loadFleetDataFromSupabase() {
+    if (!supabase) {
+        console.log("⚠️ Supabase not configured - fleet data will start empty");
+        return;
+    }
+
+    try {
+        console.log("📥 Loading fleet data from Supabase...");
+
+        // Get distinct device IDs that have readings
+        const { data: devices, error: devicesError } = await supabase
+            .from('readings')
+            .select('device_id')
+            .order('timestamp', { ascending: false });
+
+        if (devicesError) throw devicesError;
+
+        // Get unique device IDs
+        const uniqueDevices = [...new Set(devices.map(d => d.device_id))];
+        console.log(`   Found ${uniqueDevices.length} devices with historical data`);
+
+        // For each device, get the latest reading
+        for (const device_id of uniqueDevices) {
+            const { data: latestReading, error: readingError } = await supabase
+                .from('readings')
+                .select('*')
+                .eq('device_id', device_id)
+                .order('timestamp', { ascending: false })
+                .limit(1)
+                .single();
+
+            if (readingError) {
+                console.error(`   ❌ Error loading ${device_id}:`, readingError.message);
+                continue;
+            }
+
+            if (latestReading) {
+                // Get device location info
+                const { data: deviceInfo } = await supabase
+                    .from('devices')
+                    .select('*, locations(name)')
+                    .eq('device_id', device_id)
+                    .single();
+
+                // Reconstruct the fleet status entry
+                fleetStatus[device_id] = {
+                    device_id: latestReading.device_id,
+                    timestamp: latestReading.timestamp,
+                    location_name: deviceInfo?.locations?.name || 'Unknown',
+                    temp_cabinet: parseFloat(latestReading.temp_cabinet),
+                    temp_ambient: latestReading.temp_ambient ? parseFloat(latestReading.temp_ambient) : null,
+                    compressor_power_w: latestReading.compressor_power_w ? parseFloat(latestReading.compressor_power_w) : 0,
+                    compressor_freq_hz: latestReading.compressor_freq_hz ? parseFloat(latestReading.compressor_freq_hz) : 0,
+                    frost_level: latestReading.frost_level ? parseFloat(latestReading.frost_level) : 0,
+                    cop: latestReading.cop ? parseFloat(latestReading.cop) : 0,
+                    door_open: latestReading.door_open || false,
+                    defrost_on: latestReading.defrost_on || false,
+                    fault: latestReading.fault || 'NORMAL',
+                    fault_id: latestReading.fault_id || 0
+                };
+
+                // Initialize freezer history array
+                if (!freezerHistory[device_id]) {
+                    freezerHistory[device_id] = [];
+                }
+            }
+        }
+
+        const loadedCount = Object.keys(fleetStatus).length;
+        if (loadedCount > 0) {
+            lastFleetDataReceived = new Date();
+            console.log(`✅ Loaded ${loadedCount} devices from Supabase`);
+        } else {
+            console.log("   No fleet data found in Supabase");
+        }
+    } catch (error) {
+        console.error("❌ Error loading fleet data from Supabase:", error.message);
+    }
+}
+
 // Configure multer for firmware uploads (store in memory)
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -607,6 +688,11 @@ app.post('/api/data', (req, res) => {
             io.emit('homeFreezerData', normalizedHomeFreezer);
             addToMasterHistory(normalizedHomeFreezer, 'home_freezer');
         }
+
+        // Persist to Supabase for Guardian Ledger reports (async, non-blocking)
+        storeHomeFreezerReading(normalizedHomeFreezer).catch(err => {
+            console.error("Failed to store home freezer reading:", err.message);
+        });
 
     } else if (sensorType === 'body_tracker') {
         // Body tracker data from ECG/accelerometer chest strap
@@ -1593,6 +1679,928 @@ Provide a helpful, friendly response about the home freezer 2 status. If there a
         res.status(500).json({ error: "Failed to generate response" });
     }
 });
+
+// ==================== GUARDIAN LEDGER - AUDIT REPORTING ENGINE ====================
+
+const crypto = require('crypto');
+
+// Helper: Store home freezer reading to Supabase
+async function storeHomeFreezerReading(readingData) {
+    if (!supabase) return null;
+    try {
+        const { data, error } = await supabase
+            .from('home_freezer_readings')
+            .insert({
+                device_id: readingData.device_id,
+                timestamp: readingData.timestamp,
+                temp_c: readingData.temp_c,
+                door_status: readingData.door_status,
+                is_door_open: readingData.is_door_open,
+                accel_x: readingData.accel_x,
+                accel_y: readingData.accel_y,
+                accel_z: readingData.accel_z,
+                firmware_version: readingData.firmware_version
+            })
+            .select()
+            .single();
+        if (error) {
+            console.error("❌ Error storing home freezer reading:", error.message);
+            return null;
+        }
+        return data;
+    } catch (error) {
+        console.error("❌ Supabase home freezer reading error:", error.message);
+        return null;
+    }
+}
+
+// Mean Kinetic Temperature (MKT) Calculation
+// Based on the Arrhenius equation - accounts for thermal history
+function calculateMKT(temperatures, deltaH = 83144) {
+    if (!temperatures || temperatures.length === 0) return null;
+
+    const R = 8.314; // Universal gas constant (J/mol·K)
+    const validTemps = temperatures.filter(t => t !== null && t !== undefined && t !== -127);
+
+    if (validTemps.length === 0) return null;
+
+    // Convert to Kelvin and calculate exponential sum
+    const tempKelvin = validTemps.map(t => t + 273.15);
+    const expSum = tempKelvin.reduce((sum, T) => sum + Math.exp(-deltaH / (R * T)), 0);
+
+    // MKT formula
+    const mkt = (-deltaH / (R * Math.log(expSum / validTemps.length))) - 273.15;
+
+    return {
+        mkt: parseFloat(mkt.toFixed(2)),
+        sampleCount: validTemps.length,
+        interpretation: mkt <= -15 ? 'PASS' : mkt <= -10 ? 'MARGINAL' : 'FAIL',
+        formula: 'ΔH/R / ln(Σexp(-ΔH/RT)/n)'
+    };
+}
+
+// Vibration Health Index (VHI) Calculation
+// Analyzes accelerometer data to assess compressor health
+function calculateVibrationHealthIndex(readings) {
+    if (!readings || readings.length < 10) {
+        return { index: null, trend: 'insufficient_data', diagnosis: 'Need at least 10 readings for analysis' };
+    }
+
+    // Calculate magnitude for each reading
+    const magnitudes = readings.map(r => {
+        const x = r.accel_x || 0;
+        const y = r.accel_y || 0;
+        const z = r.accel_z || 0;
+        return Math.sqrt(x * x + y * y + z * z);
+    });
+
+    // Calculate statistics
+    const avgMagnitude = magnitudes.reduce((a, b) => a + b, 0) / magnitudes.length;
+    const variance = magnitudes.reduce((sum, m) => sum + Math.pow(m - avgMagnitude, 2), 0) / magnitudes.length;
+    const stdDev = Math.sqrt(variance);
+    const maxMagnitude = Math.max(...magnitudes);
+
+    // Detect peaks (readings > 2 std devs from mean)
+    const peakCount = magnitudes.filter(m => m > avgMagnitude + 2 * stdDev).length;
+    const peakRatio = peakCount / magnitudes.length;
+
+    // Calculate trend (compare first half vs second half)
+    const midpoint = Math.floor(magnitudes.length / 2);
+    const firstHalfAvg = magnitudes.slice(0, midpoint).reduce((a, b) => a + b, 0) / midpoint;
+    const secondHalfAvg = magnitudes.slice(midpoint).reduce((a, b) => a + b, 0) / (magnitudes.length - midpoint);
+    const trendPercent = ((secondHalfAvg - firstHalfAvg) / firstHalfAvg) * 100;
+
+    // Calculate health index (0-100)
+    // Deductions: high variance, many peaks, degrading trend
+    let healthIndex = 100;
+
+    // Variance penalty (normal variance ~0.01-0.05 for stationary compressor)
+    if (stdDev > 0.1) healthIndex -= 15;
+    else if (stdDev > 0.05) healthIndex -= 5;
+
+    // Peak penalty
+    if (peakRatio > 0.1) healthIndex -= 20;
+    else if (peakRatio > 0.05) healthIndex -= 10;
+
+    // Trend penalty (if getting worse)
+    if (trendPercent > 20) healthIndex -= 15;
+    else if (trendPercent > 10) healthIndex -= 5;
+
+    // Max magnitude penalty
+    if (maxMagnitude > 2.0) healthIndex -= 10;
+    else if (maxMagnitude > 1.5) healthIndex -= 5;
+
+    healthIndex = Math.max(0, Math.min(100, healthIndex));
+
+    // Determine trend label
+    let trend = 'stable';
+    if (trendPercent > 10) trend = 'degrading';
+    else if (trendPercent < -10) trend = 'improving';
+
+    // Generate diagnosis
+    let diagnosis = 'Compressor operating normally.';
+    if (healthIndex < 50) {
+        diagnosis = 'Significant vibration anomalies detected. Schedule maintenance inspection.';
+    } else if (healthIndex < 70) {
+        diagnosis = 'Minor vibration irregularities observed. Monitor closely.';
+    } else if (healthIndex < 85) {
+        diagnosis = 'Slight increase in vibration patterns. Continue normal monitoring.';
+    }
+
+    return {
+        index: healthIndex,
+        trend,
+        diagnosis,
+        stats: {
+            avgMagnitude: parseFloat(avgMagnitude.toFixed(4)),
+            stdDev: parseFloat(stdDev.toFixed(4)),
+            maxMagnitude: parseFloat(maxMagnitude.toFixed(4)),
+            peakCount,
+            trendPercent: parseFloat(trendPercent.toFixed(1))
+        }
+    };
+}
+
+// Night Gap Analysis (19:00 - 08:00)
+// Analyzes temperature stability during unstaffed hours
+function analyzeNightGap(readings, nightStart = 19, nightEnd = 8) {
+    if (!readings || readings.length === 0) {
+        return { score: null, analysis: 'No data available' };
+    }
+
+    // Filter for night hours only
+    const nightReadings = readings.filter(r => {
+        const hour = new Date(r.timestamp).getHours();
+        return hour >= nightStart || hour < nightEnd;
+    });
+
+    if (nightReadings.length < 5) {
+        return { score: null, analysis: 'Insufficient night data for analysis' };
+    }
+
+    const temps = nightReadings.map(r => r.temp_c).filter(t => t !== null && t !== undefined && t !== -127);
+
+    if (temps.length === 0) {
+        return { score: null, analysis: 'No valid temperature readings during night hours' };
+    }
+
+    const avgTemp = temps.reduce((a, b) => a + b, 0) / temps.length;
+    const variance = temps.reduce((sum, t) => sum + Math.pow(t - avgTemp, 2), 0) / temps.length;
+    const stdDev = Math.sqrt(variance);
+    const minTemp = Math.min(...temps);
+    const maxTemp = Math.max(...temps);
+    const tempRange = maxTemp - minTemp;
+
+    // Check for door events at night
+    const nightDoorEvents = nightReadings.filter(r => r.is_door_open).length;
+
+    // Calculate stability score (0-100)
+    let score = 100;
+
+    // Temperature variance penalty
+    if (stdDev > 2) score -= 30;
+    else if (stdDev > 1) score -= 15;
+    else if (stdDev > 0.5) score -= 5;
+
+    // Temperature range penalty
+    if (tempRange > 5) score -= 20;
+    else if (tempRange > 3) score -= 10;
+    else if (tempRange > 2) score -= 5;
+
+    // Door event penalty
+    if (nightDoorEvents > 0) score -= (nightDoorEvents * 5);
+
+    // Out-of-range penalty
+    if (avgTemp > -15 || avgTemp < -25) score -= 15;
+
+    score = Math.max(0, Math.min(100, score));
+
+    let analysis = 'Excellent temperature stability during unstaffed hours.';
+    if (score < 60) {
+        analysis = 'Significant temperature fluctuations during night hours. Investigation recommended.';
+    } else if (score < 75) {
+        analysis = 'Moderate temperature variance overnight. Check door seals and thermostat.';
+    } else if (score < 90) {
+        analysis = 'Good stability with minor fluctuations.';
+    }
+
+    return {
+        score: parseFloat(score.toFixed(1)),
+        analysis,
+        stats: {
+            avgTemp: parseFloat(avgTemp.toFixed(2)),
+            variance: parseFloat(variance.toFixed(4)),
+            tempRange: parseFloat(tempRange.toFixed(2)),
+            minTemp: parseFloat(minTemp.toFixed(2)),
+            maxTemp: parseFloat(maxTemp.toFixed(2)),
+            nightReadingCount: temps.length,
+            doorEventsAtNight: nightDoorEvents
+        },
+        period: `${nightStart}:00 - ${nightEnd}:00`
+    };
+}
+
+// Detect and log temperature excursions
+async function detectExcursions(readings, deviceId) {
+    if (!readings || readings.length < 2) return [];
+
+    const excursions = [];
+    let currentExcursion = null;
+    const EXCURSION_THRESHOLD = -10; // Temperature above this is an excursion
+
+    for (let i = 0; i < readings.length; i++) {
+        const reading = readings[i];
+        const temp = reading.temp_c;
+
+        if (temp > EXCURSION_THRESHOLD && !currentExcursion) {
+            // Start of excursion
+            currentExcursion = {
+                device_id: deviceId,
+                start_time: reading.timestamp,
+                peak_temp_c: temp,
+                excursion_type: reading.is_door_open ? 'door_open' : 'high_temp'
+            };
+        } else if (temp > EXCURSION_THRESHOLD && currentExcursion) {
+            // Continuing excursion - update peak
+            if (temp > currentExcursion.peak_temp_c) {
+                currentExcursion.peak_temp_c = temp;
+            }
+        } else if (temp <= EXCURSION_THRESHOLD && currentExcursion) {
+            // End of excursion
+            currentExcursion.end_time = reading.timestamp;
+            const duration = (new Date(currentExcursion.end_time) - new Date(currentExcursion.start_time)) / 60000;
+            currentExcursion.duration_minutes = Math.round(duration);
+            currentExcursion.severity = duration > 60 ? 'critical' : duration > 15 ? 'moderate' : 'minor';
+            currentExcursion.resolved = true;
+            excursions.push(currentExcursion);
+            currentExcursion = null;
+        }
+    }
+
+    // Handle ongoing excursion
+    if (currentExcursion) {
+        currentExcursion.resolved = false;
+        excursions.push(currentExcursion);
+    }
+
+    return excursions;
+}
+
+// Generate AI summaries for the report
+async function generateReportSummaries(reportData, deviceId) {
+    if (!ai) {
+        return {
+            executiveSummary: 'AI analysis unavailable - API key not configured.',
+            engineerBrief: 'AI analysis unavailable - API key not configured.'
+        };
+    }
+
+    try {
+        const executivePrompt = `Generate a brief executive summary (2-3 sentences) for a freezer compliance report.
+
+Device: ${deviceId}
+Report Period: ${reportData.period}
+Mean Kinetic Temperature: ${reportData.mkt?.mkt}°C (${reportData.mkt?.interpretation})
+Vibration Health Index: ${reportData.vhi?.index}/100 (${reportData.vhi?.trend})
+Night Stability Score: ${reportData.nightGap?.score}%
+Total Excursions: ${reportData.excursions?.length || 0}
+
+Write a professional summary focusing on compliance status and any concerns.`;
+
+        const engineerPrompt = `Generate a brief engineer's inspection checklist for a freezer maintenance technician.
+
+Device: ${deviceId}
+Vibration Health: ${reportData.vhi?.index}/100
+Vibration Trend: ${reportData.vhi?.trend}
+Diagnosis: ${reportData.vhi?.diagnosis}
+Temperature Stability: ${reportData.nightGap?.analysis}
+Recent Excursions: ${reportData.excursions?.length || 0}
+
+Provide:
+1. System status (1 line)
+2. Top 3 inspection priorities (bulleted)
+3. Recommended maintenance schedule
+4. Parts to monitor (if any)`;
+
+        const [execResult, engResult] = await Promise.all([
+            ai.models.generateContent({ model: GEMINI_MODEL, contents: executivePrompt }),
+            ai.models.generateContent({ model: GEMINI_MODEL, contents: engineerPrompt })
+        ]);
+
+        return {
+            executiveSummary: execResult.text,
+            engineerBrief: engResult.text
+        };
+    } catch (error) {
+        console.error("AI summary generation error:", error);
+        return {
+            executiveSummary: 'Unable to generate AI summary.',
+            engineerBrief: 'Unable to generate AI brief.'
+        };
+    }
+}
+
+// API: Get monthly data for a device
+app.get('/api/home-freezer/:device/monthly', async (req, res) => {
+    const { device } = req.params;
+    const { month, year } = req.query;
+
+    const targetMonth = parseInt(month) || new Date().getMonth() + 1;
+    const targetYear = parseInt(year) || new Date().getFullYear();
+
+    const startDate = new Date(targetYear, targetMonth - 1, 1);
+    const endDate = new Date(targetYear, targetMonth, 0, 23, 59, 59);
+
+    // Try to get from Supabase first
+    if (supabase) {
+        try {
+            const { data: readings, error } = await supabase
+                .from('home_freezer_readings')
+                .select('*')
+                .eq('device_id', device)
+                .gte('timestamp', startDate.toISOString())
+                .lte('timestamp', endDate.toISOString())
+                .order('timestamp', { ascending: true });
+
+            if (!error && readings && readings.length > 0) {
+                const temps = readings.map(r => parseFloat(r.temp_c));
+                const mkt = calculateMKT(temps);
+                const vhi = calculateVibrationHealthIndex(readings);
+                const nightGap = analyzeNightGap(readings);
+                const excursions = await detectExcursions(readings, device);
+
+                return res.json({
+                    device,
+                    period: `${targetYear}-${String(targetMonth).padStart(2, '0')}`,
+                    readingCount: readings.length,
+                    mkt,
+                    vhi,
+                    nightGap,
+                    excursions,
+                    source: 'supabase'
+                });
+            }
+        } catch (error) {
+            console.error("Supabase query error:", error);
+        }
+    }
+
+    // Fallback to in-memory data
+    const history = device === 'FREEZER_MAIN' ? homeFreezer2History : homeFreezerHistory;
+    const filteredHistory = history.filter(r => {
+        const ts = new Date(r.timestamp);
+        return ts >= startDate && ts <= endDate;
+    });
+
+    if (filteredHistory.length === 0) {
+        return res.status(404).json({ error: 'No data found for the specified period' });
+    }
+
+    const temps = filteredHistory.map(r => r.temp_c);
+    const mkt = calculateMKT(temps);
+    const vhi = calculateVibrationHealthIndex(filteredHistory);
+    const nightGap = analyzeNightGap(filteredHistory);
+    const excursions = await detectExcursions(filteredHistory, device);
+
+    res.json({
+        device,
+        period: `${targetYear}-${String(targetMonth).padStart(2, '0')}`,
+        readingCount: filteredHistory.length,
+        mkt,
+        vhi,
+        nightGap,
+        excursions,
+        source: 'memory'
+    });
+});
+
+// API: Generate a new audit report
+app.post('/api/home-freezer/reports/generate', async (req, res) => {
+    const { device_id, month, year, options = {} } = req.body;
+
+    if (!device_id) {
+        return res.status(400).json({ error: 'device_id is required' });
+    }
+
+    const targetMonth = parseInt(month) || new Date().getMonth() + 1;
+    const targetYear = parseInt(year) || new Date().getFullYear();
+    const period = `${targetYear}-${String(targetMonth).padStart(2, '0')}`;
+
+    const startDate = new Date(targetYear, targetMonth - 1, 1);
+    const endDate = new Date(targetYear, targetMonth, 0, 23, 59, 59);
+
+    let readings = [];
+
+    // Fetch readings
+    if (supabase) {
+        try {
+            const { data, error } = await supabase
+                .from('home_freezer_readings')
+                .select('*')
+                .eq('device_id', device_id)
+                .gte('timestamp', startDate.toISOString())
+                .lte('timestamp', endDate.toISOString())
+                .order('timestamp', { ascending: true });
+
+            if (!error && data) readings = data;
+        } catch (error) {
+            console.error("Supabase query error:", error);
+        }
+    }
+
+    // Fallback to in-memory
+    if (readings.length === 0) {
+        const history = device_id === 'FREEZER_MAIN' ? homeFreezer2History : homeFreezerHistory;
+        readings = history.filter(r => {
+            const ts = new Date(r.timestamp);
+            return ts >= startDate && ts <= endDate;
+        });
+    }
+
+    if (readings.length === 0) {
+        return res.status(404).json({ error: 'No data found for the specified period' });
+    }
+
+    // Calculate metrics
+    const temps = readings.map(r => parseFloat(r.temp_c) || r.temp_c);
+    const mkt = calculateMKT(temps);
+    const vhi = calculateVibrationHealthIndex(readings);
+    const nightGap = analyzeNightGap(readings);
+    const excursions = await detectExcursions(readings, device_id);
+
+    // Determine compliance status
+    let complianceStatus = 'compliant';
+    if (mkt && mkt.interpretation === 'FAIL') complianceStatus = 'non_compliant';
+    else if (mkt && mkt.interpretation === 'MARGINAL') complianceStatus = 'warning';
+    else if (excursions.filter(e => e.severity === 'critical').length > 0) complianceStatus = 'warning';
+
+    const reportData = {
+        device_id,
+        period,
+        readingCount: readings.length,
+        mkt,
+        vhi,
+        nightGap,
+        excursions,
+        complianceStatus,
+        generatedAt: new Date().toISOString()
+    };
+
+    // Generate AI summaries if enabled
+    if (options.includeAISummaries !== false) {
+        const summaries = await generateReportSummaries(reportData, device_id);
+        reportData.executiveSummary = summaries.executiveSummary;
+        reportData.engineerBrief = summaries.engineerBrief;
+    }
+
+    // Generate audit hash
+    const auditHash = crypto.createHash('sha256')
+        .update(JSON.stringify(reportData))
+        .digest('hex')
+        .substring(0, 16);
+    reportData.auditHash = auditHash;
+
+    // Store report in Supabase
+    if (supabase) {
+        try {
+            await supabase.from('monthly_reports').insert({
+                device_id,
+                report_month: startDate.toISOString().split('T')[0],
+                mkt_celsius: mkt?.mkt,
+                vibration_health_index: vhi?.index,
+                night_stability_score: nightGap?.score,
+                total_excursions: excursions.length,
+                excursion_minutes: excursions.reduce((sum, e) => sum + (e.duration_minutes || 0), 0),
+                compliance_status: complianceStatus,
+                ai_executive_summary: reportData.executiveSummary,
+                ai_engineer_brief: reportData.engineerBrief,
+                report_data: reportData,
+                audit_hash: auditHash
+            });
+        } catch (error) {
+            console.error("Error storing report:", error);
+        }
+    }
+
+    res.json(reportData);
+});
+
+// API: Get report history
+app.get('/api/home-freezer/reports/history', async (req, res) => {
+    const { device_id, limit = 10 } = req.query;
+
+    if (!supabase) {
+        return res.json({ reports: [], message: 'Supabase not configured' });
+    }
+
+    try {
+        let query = supabase
+            .from('monthly_reports')
+            .select('id, device_id, report_month, mkt_celsius, vibration_health_index, compliance_status, generated_at, audit_hash')
+            .order('report_month', { ascending: false })
+            .limit(parseInt(limit));
+
+        if (device_id) {
+            query = query.eq('device_id', device_id);
+        }
+
+        const { data, error } = await query;
+
+        if (error) throw error;
+
+        res.json({ reports: data || [] });
+    } catch (error) {
+        console.error("Error fetching report history:", error);
+        res.status(500).json({ error: 'Failed to fetch report history' });
+    }
+});
+
+// API: Download PDF report
+app.get('/api/home-freezer/reports/:id/download', async (req, res) => {
+    const { id } = req.params;
+
+    let reportData = null;
+
+    // Try to fetch from Supabase
+    if (supabase) {
+        try {
+            const { data, error } = await supabase
+                .from('monthly_reports')
+                .select('*')
+                .eq('id', id)
+                .single();
+
+            if (!error && data) {
+                reportData = data.report_data;
+                reportData.device_id = data.device_id;
+                reportData.auditHash = data.audit_hash;
+            }
+        } catch (error) {
+            console.error("Error fetching report:", error);
+        }
+    }
+
+    if (!reportData) {
+        return res.status(404).json({ error: 'Report not found' });
+    }
+
+    generateGuardianLedgerPDF(res, reportData);
+});
+
+// API: Generate PDF on-demand (without storing)
+app.post('/api/home-freezer/reports/pdf', async (req, res) => {
+    const { device_id, month, year } = req.body;
+
+    if (!device_id) {
+        return res.status(400).json({ error: 'device_id is required' });
+    }
+
+    // First generate the report data
+    const targetMonth = parseInt(month) || new Date().getMonth() + 1;
+    const targetYear = parseInt(year) || new Date().getFullYear();
+    const period = `${targetYear}-${String(targetMonth).padStart(2, '0')}`;
+
+    const startDate = new Date(targetYear, targetMonth - 1, 1);
+    const endDate = new Date(targetYear, targetMonth, 0, 23, 59, 59);
+
+    let readings = [];
+
+    if (supabase) {
+        try {
+            const { data, error } = await supabase
+                .from('home_freezer_readings')
+                .select('*')
+                .eq('device_id', device_id)
+                .gte('timestamp', startDate.toISOString())
+                .lte('timestamp', endDate.toISOString())
+                .order('timestamp', { ascending: true });
+
+            if (!error && data) readings = data;
+        } catch (error) {
+            console.error("Supabase query error:", error);
+        }
+    }
+
+    if (readings.length === 0) {
+        const history = device_id === 'FREEZER_MAIN' ? homeFreezer2History : homeFreezerHistory;
+        readings = history.filter(r => {
+            const ts = new Date(r.timestamp);
+            return ts >= startDate && ts <= endDate;
+        });
+    }
+
+    if (readings.length === 0) {
+        return res.status(404).json({ error: 'No data found for the specified period' });
+    }
+
+    const temps = readings.map(r => parseFloat(r.temp_c) || r.temp_c);
+    const mkt = calculateMKT(temps);
+    const vhi = calculateVibrationHealthIndex(readings);
+    const nightGap = analyzeNightGap(readings);
+    const excursions = await detectExcursions(readings, device_id);
+
+    let complianceStatus = 'compliant';
+    if (mkt && mkt.interpretation === 'FAIL') complianceStatus = 'non_compliant';
+    else if (mkt && mkt.interpretation === 'MARGINAL') complianceStatus = 'warning';
+
+    const reportData = {
+        device_id,
+        period,
+        readingCount: readings.length,
+        mkt,
+        vhi,
+        nightGap,
+        excursions,
+        complianceStatus,
+        generatedAt: new Date().toISOString()
+    };
+
+    const summaries = await generateReportSummaries(reportData, device_id);
+    reportData.executiveSummary = summaries.executiveSummary;
+    reportData.engineerBrief = summaries.engineerBrief;
+
+    reportData.auditHash = crypto.createHash('sha256')
+        .update(JSON.stringify(reportData))
+        .digest('hex')
+        .substring(0, 16);
+
+    generateGuardianLedgerPDF(res, reportData);
+});
+
+// PDF Generation function for Guardian Ledger reports
+function generateGuardianLedgerPDF(res, reportData) {
+    const timestamp = new Date().toISOString().split('T')[0];
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="guardian-ledger-${reportData.device_id}-${reportData.period}.pdf"`);
+
+    const doc = new PDFDocument({ margin: 50 });
+    doc.pipe(res);
+
+    // --- Cover Page ---
+    doc.fontSize(36).font('Helvetica-Bold').fillColor('#0891b2').text('GUARDIAN', { align: 'center' });
+    doc.fontSize(36).fillColor('#164e63').text('LEDGER', { align: 'center' });
+    doc.moveDown(1);
+    doc.fontSize(16).font('Helvetica').fillColor('#475569').text('Thermal & Mechanical Integrity Report', { align: 'center' });
+    doc.moveDown(3);
+
+    // Snowflake icon (simple text representation)
+    doc.fontSize(72).fillColor('#22d3ee').text('❄', { align: 'center' });
+    doc.moveDown(2);
+
+    doc.fontSize(14).fillColor('#1e293b').font('Helvetica');
+    doc.text(`Report Period: ${reportData.period}`, { align: 'center' });
+    doc.moveDown(0.5);
+    doc.text(`Device: ${reportData.device_id}`, { align: 'center' });
+    doc.moveDown(0.5);
+    doc.text(`Audit Trail: ${reportData.auditHash}...`, { align: 'center' });
+    doc.moveDown(0.5);
+    doc.text(`Generated: ${new Date(reportData.generatedAt).toLocaleString()}`, { align: 'center' });
+
+    doc.addPage();
+
+    // --- Executive Summary ---
+    doc.fontSize(20).font('Helvetica-Bold').fillColor('#0891b2').text('Executive Summary');
+    doc.moveDown(0.5);
+    doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke('#0891b2');
+    doc.moveDown(1);
+
+    // Compliance badge
+    const complianceColor = reportData.complianceStatus === 'compliant' ? '#10b981' :
+                           reportData.complianceStatus === 'warning' ? '#f59e0b' : '#ef4444';
+    const complianceText = reportData.complianceStatus === 'compliant' ? '✓ COMPLIANT' :
+                          reportData.complianceStatus === 'warning' ? '⚠ WARNING' : '✗ NON-COMPLIANT';
+
+    doc.rect(50, doc.y, 495, 40).fillAndStroke(complianceColor, complianceColor);
+    doc.fontSize(18).font('Helvetica-Bold').fillColor('#ffffff').text(complianceText, 50, doc.y - 30, { align: 'center', width: 495 });
+    doc.moveDown(2);
+
+    // AI Summary
+    if (reportData.executiveSummary) {
+        doc.fontSize(11).font('Helvetica').fillColor('#374151').text(reportData.executiveSummary, { align: 'left' });
+    }
+    doc.moveDown(2);
+
+    // Key Metrics boxes
+    const metricsY = doc.y;
+    const boxWidth = 115;
+    const boxHeight = 60;
+
+    // MKT Box
+    doc.rect(50, metricsY, boxWidth, boxHeight).stroke('#e5e7eb');
+    doc.fontSize(10).fillColor('#6b7280').text('MKT', 50, metricsY + 5, { width: boxWidth, align: 'center' });
+    doc.fontSize(20).font('Helvetica-Bold').fillColor('#1e293b').text(
+        reportData.mkt ? `${reportData.mkt.mkt}°C` : 'N/A',
+        50, metricsY + 20, { width: boxWidth, align: 'center' }
+    );
+    const mktStatus = reportData.mkt?.interpretation || 'N/A';
+    const mktColor = mktStatus === 'PASS' ? '#10b981' : mktStatus === 'MARGINAL' ? '#f59e0b' : '#ef4444';
+    doc.fontSize(10).font('Helvetica').fillColor(mktColor).text(mktStatus, 50, metricsY + 45, { width: boxWidth, align: 'center' });
+
+    // VHI Box
+    doc.rect(175, metricsY, boxWidth, boxHeight).stroke('#e5e7eb');
+    doc.fontSize(10).fillColor('#6b7280').text('Health Index', 175, metricsY + 5, { width: boxWidth, align: 'center' });
+    doc.fontSize(20).font('Helvetica-Bold').fillColor('#1e293b').text(
+        reportData.vhi?.index !== null ? `${reportData.vhi.index}%` : 'N/A',
+        175, metricsY + 20, { width: boxWidth, align: 'center' }
+    );
+    const vhiColor = (reportData.vhi?.index || 0) >= 85 ? '#10b981' : (reportData.vhi?.index || 0) >= 70 ? '#f59e0b' : '#ef4444';
+    doc.fontSize(10).font('Helvetica').fillColor(vhiColor).text(
+        reportData.vhi?.trend || 'N/A',
+        175, metricsY + 45, { width: boxWidth, align: 'center' }
+    );
+
+    // Night Stability Box
+    doc.rect(300, metricsY, boxWidth, boxHeight).stroke('#e5e7eb');
+    doc.fontSize(10).fillColor('#6b7280').text('Night Stability', 300, metricsY + 5, { width: boxWidth, align: 'center' });
+    doc.fontSize(20).font('Helvetica-Bold').fillColor('#1e293b').text(
+        reportData.nightGap?.score !== null ? `${reportData.nightGap.score}%` : 'N/A',
+        300, metricsY + 20, { width: boxWidth, align: 'center' }
+    );
+    const nightColor = (reportData.nightGap?.score || 0) >= 90 ? '#10b981' : (reportData.nightGap?.score || 0) >= 75 ? '#f59e0b' : '#ef4444';
+    doc.fontSize(10).font('Helvetica').fillColor(nightColor).text('Stable', 300, metricsY + 45, { width: boxWidth, align: 'center' });
+
+    // Excursions Box
+    doc.rect(425, metricsY, boxWidth, boxHeight).stroke('#e5e7eb');
+    doc.fontSize(10).fillColor('#6b7280').text('Excursions', 425, metricsY + 5, { width: boxWidth, align: 'center' });
+    doc.fontSize(20).font('Helvetica-Bold').fillColor('#1e293b').text(
+        String(reportData.excursions?.length || 0),
+        425, metricsY + 20, { width: boxWidth, align: 'center' }
+    );
+    const excColor = (reportData.excursions?.length || 0) === 0 ? '#10b981' : '#f59e0b';
+    doc.fontSize(10).font('Helvetica').fillColor(excColor).text(
+        (reportData.excursions?.length || 0) === 0 ? 'None' : 'See details',
+        425, metricsY + 45, { width: boxWidth, align: 'center' }
+    );
+
+    doc.y = metricsY + boxHeight + 30;
+
+    doc.addPage();
+
+    // --- Temperature Analysis ---
+    doc.fontSize(20).font('Helvetica-Bold').fillColor('#0891b2').text('Temperature Analysis');
+    doc.moveDown(0.5);
+    doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke('#0891b2');
+    doc.moveDown(1);
+
+    doc.fontSize(12).font('Helvetica').fillColor('#1e293b');
+    doc.text(`Total Readings: ${reportData.readingCount}`);
+    doc.moveDown(0.5);
+
+    if (reportData.mkt) {
+        doc.fontSize(14).font('Helvetica-Bold').text('Mean Kinetic Temperature (MKT)');
+        doc.moveDown(0.5);
+        doc.fontSize(11).font('Helvetica');
+        doc.text(`MKT Value: ${reportData.mkt.mkt}°C`);
+        doc.text(`Sample Count: ${reportData.mkt.sampleCount} readings`);
+        doc.text(`Interpretation: ${reportData.mkt.interpretation}`);
+        doc.moveDown(0.5);
+        doc.fontSize(10).fillColor('#6b7280');
+        doc.text(`Formula: ${reportData.mkt.formula}`);
+        doc.text('The MKT accounts for the thermal history and represents the single temperature that would produce the same amount of degradation as the actual temperature variations experienced.');
+    }
+
+    doc.moveDown(2);
+
+    // --- Night Gap Analysis ---
+    doc.fontSize(20).font('Helvetica-Bold').fillColor('#0891b2').text('Night Gap Analysis');
+    doc.moveDown(0.5);
+    doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke('#0891b2');
+    doc.moveDown(1);
+
+    if (reportData.nightGap) {
+        doc.fontSize(12).font('Helvetica').fillColor('#1e293b');
+        doc.text(`Analysis Period: ${reportData.nightGap.period} (unstaffed hours)`);
+        doc.moveDown(0.5);
+
+        doc.fontSize(24).font('Helvetica-Bold');
+        doc.text(`Night Stability Score: ${reportData.nightGap.score}%`);
+        doc.moveDown(0.5);
+
+        doc.fontSize(11).font('Helvetica').fillColor('#374151');
+        doc.text(reportData.nightGap.analysis);
+        doc.moveDown(1);
+
+        if (reportData.nightGap.stats) {
+            doc.fontSize(12).font('Helvetica-Bold').fillColor('#1e293b').text('Statistics:');
+            doc.fontSize(11).font('Helvetica');
+            doc.text(`Average Temperature: ${reportData.nightGap.stats.avgTemp}°C`);
+            doc.text(`Temperature Range: ${reportData.nightGap.stats.tempRange}°C (${reportData.nightGap.stats.minTemp}°C to ${reportData.nightGap.stats.maxTemp}°C)`);
+            doc.text(`Night Readings: ${reportData.nightGap.stats.nightReadingCount}`);
+            doc.text(`Door Events at Night: ${reportData.nightGap.stats.doorEventsAtNight}`);
+        }
+    }
+
+    doc.addPage();
+
+    // --- Vibration Health ---
+    doc.fontSize(20).font('Helvetica-Bold').fillColor('#0891b2').text('Vibration Health Index');
+    doc.moveDown(0.5);
+    doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke('#0891b2');
+    doc.moveDown(1);
+
+    if (reportData.vhi) {
+        // Health gauge visualization
+        const gaugeY = doc.y;
+        const gaugeWidth = 200;
+        const gaugeHeight = 20;
+
+        doc.rect(50, gaugeY, gaugeWidth, gaugeHeight).stroke('#e5e7eb');
+        const fillWidth = (reportData.vhi.index / 100) * gaugeWidth;
+        const fillColor = reportData.vhi.index >= 85 ? '#10b981' : reportData.vhi.index >= 70 ? '#f59e0b' : '#ef4444';
+        doc.rect(50, gaugeY, fillWidth, gaugeHeight).fill(fillColor);
+
+        doc.fontSize(24).font('Helvetica-Bold').fillColor('#1e293b').text(
+            `${reportData.vhi.index}/100`,
+            270, gaugeY
+        );
+
+        doc.y = gaugeY + gaugeHeight + 20;
+
+        doc.fontSize(14).font('Helvetica-Bold').fillColor('#1e293b');
+        doc.text(`Trend: ${reportData.vhi.trend.charAt(0).toUpperCase() + reportData.vhi.trend.slice(1)}`);
+        doc.moveDown(0.5);
+
+        doc.fontSize(11).font('Helvetica').fillColor('#374151');
+        doc.text(reportData.vhi.diagnosis);
+        doc.moveDown(1);
+
+        if (reportData.vhi.stats) {
+            doc.fontSize(12).font('Helvetica-Bold').fillColor('#1e293b').text('Accelerometer Analysis:');
+            doc.fontSize(11).font('Helvetica');
+            doc.text(`Average Magnitude: ${reportData.vhi.stats.avgMagnitude}`);
+            doc.text(`Standard Deviation: ${reportData.vhi.stats.stdDev}`);
+            doc.text(`Max Magnitude: ${reportData.vhi.stats.maxMagnitude}`);
+            doc.text(`Peak Events: ${reportData.vhi.stats.peakCount}`);
+            doc.text(`Trend Change: ${reportData.vhi.stats.trendPercent > 0 ? '+' : ''}${reportData.vhi.stats.trendPercent}%`);
+        }
+    } else {
+        doc.fontSize(11).font('Helvetica').fillColor('#6b7280');
+        doc.text('Insufficient data for vibration analysis.');
+    }
+
+    doc.moveDown(2);
+
+    // --- Excursion Log ---
+    doc.fontSize(20).font('Helvetica-Bold').fillColor('#0891b2').text('Excursion Log');
+    doc.moveDown(0.5);
+    doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke('#0891b2');
+    doc.moveDown(1);
+
+    if (reportData.excursions && reportData.excursions.length > 0) {
+        doc.fontSize(12).font('Helvetica').fillColor('#1e293b');
+        doc.text(`${reportData.excursions.length} Excursion(s) This Period`);
+        doc.moveDown(1);
+
+        reportData.excursions.slice(0, 5).forEach((exc, idx) => {
+            const severityColor = exc.severity === 'critical' ? '#ef4444' : exc.severity === 'moderate' ? '#f59e0b' : '#6b7280';
+
+            doc.rect(50, doc.y, 495, 70).stroke(severityColor);
+
+            const boxY = doc.y;
+            doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e293b');
+            doc.text(`Event #${idx + 1}`, 60, boxY + 10);
+
+            doc.fontSize(10).font('Helvetica').fillColor('#374151');
+            doc.text(`Start: ${new Date(exc.start_time).toLocaleString()}`, 60, boxY + 25);
+            doc.text(`Peak: ${exc.peak_temp_c}°C`, 250, boxY + 25);
+            doc.text(`Duration: ${exc.duration_minutes || 'Ongoing'} min`, 350, boxY + 25);
+            doc.text(`Type: ${exc.excursion_type}`, 60, boxY + 40);
+            doc.fillColor(severityColor).text(`Severity: ${exc.severity.toUpperCase()}`, 250, boxY + 40);
+
+            doc.y = boxY + 80;
+        });
+    } else {
+        doc.fontSize(11).font('Helvetica').fillColor('#10b981');
+        doc.text('No temperature excursions recorded during this period. ✓');
+    }
+
+    doc.addPage();
+
+    // --- Engineer's Brief ---
+    doc.fontSize(20).font('Helvetica-Bold').fillColor('#0891b2').text("Engineer's Brief");
+    doc.moveDown(0.5);
+    doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke('#0891b2');
+    doc.moveDown(1);
+
+    doc.fontSize(12).font('Helvetica').fillColor('#1e293b');
+    doc.text(`Device: ${reportData.device_id}`);
+    doc.text(`Period: ${reportData.period}`);
+    doc.moveDown(1);
+
+    if (reportData.engineerBrief) {
+        doc.fontSize(11).font('Helvetica').fillColor('#374151');
+        doc.text(reportData.engineerBrief);
+    }
+
+    doc.moveDown(2);
+
+    // --- Footer ---
+    doc.fontSize(9).fillColor('#94a3b8').font('Helvetica');
+    doc.text('Guardian Ledger - Thermal & Mechanical Integrity Report', 50, 720, { align: 'center', width: 495 });
+    doc.text(`Audit Hash: ${reportData.auditHash} | Generated: ${new Date().toISOString()}`, { align: 'center', width: 495 });
+
+    doc.end();
+}
 
 // ==================== BODY TRACKER ENDPOINTS ====================
 
@@ -2991,7 +3999,7 @@ io.on('connection', (socket) => {
 
 // ==================== START SERVER ====================
 
-httpServer.listen(PORT, '0.0.0.0', () => {
+httpServer.listen(PORT, '0.0.0.0', async () => {
     console.log("🚀 IoT Server running!");
     console.log(`👉 Unified endpoint: http://192.168.1.183:${PORT}/api/data`);
     console.log(`   - sensor_type: 'car_telemetry' → Car Dashboard`);
@@ -3005,4 +4013,7 @@ httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`👉 Subzero Fleet: http://localhost:4001/freezer`);
     console.log(`👉 Home Freezers: http://localhost:4001/home-freezer (tabbed view for both freezers)`);
     console.log(`👉 Body Tracker: http://localhost:4001/body-tracker`);
+
+    // Load historical fleet data from Supabase
+    await loadFleetDataFromSupabase();
 });

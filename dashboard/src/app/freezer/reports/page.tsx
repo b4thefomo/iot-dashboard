@@ -2,8 +2,7 @@
 
 import * as React from "react";
 import { useState, useEffect } from "react";
-import { FreezerSidebar } from "@/components/freezer-sidebar";
-import { FleetHeader } from "@/components/fleet-header";
+import Link from "next/link";
 import {
   Card,
   CardContent,
@@ -11,218 +10,180 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  ChartLegend,
-  ChartLegendContent,
-  type ChartConfig,
-} from "@/components/ui/chart";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
+  Snowflake,
   FileText,
   Download,
+  ArrowLeft,
   Loader2,
-  Clock,
-  Thermometer,
-  Zap,
+  CheckCircle,
   AlertTriangle,
-  Home,
-  LayoutGrid,
-  Check,
-  Grid3X3,
+  XCircle,
+  Zap,
+  ThermometerSnowflake,
+  DoorOpen,
+  Package,
+  Image,
 } from "lucide-react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Line,
-  LineChart,
-  Pie,
-  PieChart,
-  XAxis,
-  YAxis,
-} from "recharts";
 
-type ReportType = "summary" | "detailed" | "anomaly";
-type TimeRange = "24h" | "7d" | "30d";
-type Format = "pdf" | "csv";
-
-interface AssetSummary {
-  total: number;
-  healthy: number;
-  warning: number;
-  critical: number;
-  avgTemp: number;
-  avgPower: number;
-  anomalyCount: number;
+interface FleetDevice {
+  device_id: string;
+  location_name: string;
 }
 
-// Chart configurations - Modern cool palette (cyan, teal, blue, purple, indigo)
-const tempChartConfig = {
-  avg: {
-    label: "Average",
-    color: "#2dd4bf", // Teal
-  },
-  min: {
-    label: "Min",
-    color: "#818cf8", // Indigo
-  },
-  max: {
-    label: "Max",
-    color: "#c084fc", // Purple
-  },
-} satisfies ChartConfig;
-
-const statusChartConfig = {
-  value: {
-    label: "Assets",
-  },
-  healthy: {
-    label: "Healthy",
-    color: "#2dd4bf", // Teal
-  },
-  warning: {
-    label: "Warning",
-    color: "#818cf8", // Indigo
-  },
-  critical: {
-    label: "Critical",
-    color: "#8b5cf6", // Violet
-  },
-} satisfies ChartConfig;
-
-const anomalyChartConfig = {
-  value: {
-    label: "Count",
-  },
-  tempExcursions: {
-    label: "Temp Excursions",
-    color: "#e11d48", // Rose/Crimson
-  },
-  doorEvents: {
-    label: "Door Events",
-    color: "#818cf8", // Indigo
-  },
-  powerSpikes: {
-    label: "Power Spikes",
-    color: "#60a5fa", // Blue
-  },
-  frostAlerts: {
-    label: "Frost Alerts",
-    color: "#5eead4", // Cyan
-  },
-} satisfies ChartConfig;
-
-const powerChartConfig = {
-  power: {
-    label: "Power (W)",
-    color: "#2dd4bf", // Teal
-  },
-} satisfies ChartConfig;
-
-// Generate mock chart data based on time range
-function generateTempTrendData(timeRange: TimeRange) {
-  const points = timeRange === "24h" ? 24 : timeRange === "7d" ? 7 : 30;
-  const labels = timeRange === "24h"
-    ? Array.from({ length: points }, (_, i) => `${i}:00`)
-    : Array.from({ length: points }, (_, i) => `Day ${i + 1}`);
-
-  return labels.map((label, i) => ({
-    name: label,
-    avg: -18 + Math.sin(i * 0.5) * 2 + (Math.random() - 0.5) * 1,
-    min: -22 + Math.sin(i * 0.5) * 1.5 + (Math.random() - 0.5) * 0.5,
-    max: -14 + Math.sin(i * 0.5) * 2.5 + (Math.random() - 0.5) * 1.5,
-  }));
+interface ReportMetrics {
+  mkt: { mkt: number; interpretation: string } | null;
+  efficiency: { score: number; avgPower: number; avgCOP: number; interpretation: string } | null;
+  operations: { doorOpenEvents: number; faultEvents: number } | null;
+  excursions: Array<{ severity: string }>;
 }
 
-function generatePowerData(timeRange: TimeRange) {
-  const points = timeRange === "24h" ? 24 : timeRange === "7d" ? 7 : 30;
-  const labels = timeRange === "24h"
-    ? Array.from({ length: points }, (_, i) => `${i}:00`)
-    : Array.from({ length: points }, (_, i) => `Day ${i + 1}`);
-
-  return labels.map((label) => ({
-    name: label,
-    power: 400 + Math.random() * 200,
-  }));
+interface ReportHistoryItem {
+  id: string;
+  device_id: string;
+  report_month: string;
+  mkt_celsius: number | null;
+  vibration_health_index: number | null;
+  compliance_status: string;
+  generated_at: string;
+  audit_hash: string;
 }
 
-function generateAnomalyData(timeRange: TimeRange) {
-  const multiplier = timeRange === "24h" ? 1 : timeRange === "7d" ? 3 : 10;
-  return [
-    { name: "Temp Excursions", value: Math.floor(2 * multiplier + Math.random() * 3), fill: "#8b5cf6" },
-    { name: "Door Events", value: Math.floor(5 * multiplier + Math.random() * 5), fill: "#a78bfa" },
-    { name: "Power Spikes", value: Math.floor(1 * multiplier + Math.random() * 2), fill: "#60a5fa" },
-    { name: "Frost Alerts", value: Math.floor(3 * multiplier + Math.random() * 4), fill: "#5eead4" },
-  ];
-}
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"
+];
 
-export default function ReportsPage() {
-  const [reportType, setReportType] = useState<ReportType>("summary");
-  const [timeRange, setTimeRange] = useState<TimeRange>("24h");
-  const [format, setFormat] = useState<Format>("pdf");
+export default function FleetReportsPage() {
+  const [devices, setDevices] = useState<FleetDevice[]>([]);
+  const [selectedDevice, setSelectedDevice] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [reportFormat, setReportFormat] = useState<"both" | "pdf" | "csv">("both");
+
   const [isGenerating, setIsGenerating] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [summary, setSummary] = useState<AssetSummary>({
-    total: 5,
-    healthy: 3,
-    warning: 1,
-    critical: 1,
-    avgTemp: -18.2,
-    avgPower: 520,
-    anomalyCount: 12,
-  });
+  const [isGeneratingInfographic, setIsGeneratingInfographic] = useState(false);
+  const [isLoadingMetrics, setIsLoadingMetrics] = useState(false);
+  const [metrics, setMetrics] = useState<ReportMetrics | null>(null);
+  const [reportHistory, setReportHistory] = useState<ReportHistoryItem[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
-  // Fetch summary data
+  // Load available devices
   useEffect(() => {
-    fetch(`${apiUrl}/api/fleet/status`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.summary) {
-          const devices = Object.values(data.devices || {}) as Array<{ temp_cabinet: number; compressor_power_w: number }>;
-          setSummary({
-            total: data.summary.total || 0,
-            healthy: data.summary.healthy || 0,
-            warning: data.summary.warning || 0,
-            critical: data.summary.critical || 0,
-            avgTemp: devices.length > 0
-              ? devices.reduce((sum, d) => sum + d.temp_cabinet, 0) / devices.length
-              : -18,
-            avgPower: devices.length > 0
-              ? devices.reduce((sum, d) => sum + d.compressor_power_w, 0) / devices.length
-              : 500,
-            anomalyCount: (data.alerts?.length || 0) * (timeRange === "24h" ? 1 : timeRange === "7d" ? 3 : 10),
-          });
+    const loadDevices = async () => {
+      try {
+        const response = await fetch(`${apiUrl}/api/fleet/status`);
+        if (response.ok) {
+          const data = await response.json();
+          const deviceList = Object.values(data.devices || {}) as FleetDevice[];
+          setDevices(deviceList);
+          if (deviceList.length > 0 && !selectedDevice) {
+            setSelectedDevice(deviceList[0].device_id);
+          }
         }
-      })
-      .catch(() => {});
-  }, [apiUrl, timeRange]);
+      } catch (error) {
+        console.error("Failed to load devices:", error);
+      }
+    };
+    loadDevices();
+  }, [apiUrl, selectedDevice]);
+
+  // Load metrics when device/date changes
+  useEffect(() => {
+    if (!selectedDevice) return;
+
+    const loadMetrics = async () => {
+      setIsLoadingMetrics(true);
+      try {
+        const response = await fetch(
+          `${apiUrl}/api/fleet/${selectedDevice}/monthly?month=${selectedMonth}&year=${selectedYear}`
+        );
+        if (response.ok) {
+          const data = await response.json();
+          setMetrics(data);
+        } else {
+          setMetrics(null);
+        }
+      } catch (error) {
+        console.error("Failed to load metrics:", error);
+        setMetrics(null);
+      } finally {
+        setIsLoadingMetrics(false);
+      }
+    };
+
+    loadMetrics();
+  }, [selectedDevice, selectedMonth, selectedYear, apiUrl]);
+
+  // Load report history
+  useEffect(() => {
+    const loadHistory = async () => {
+      setIsLoadingHistory(true);
+      try {
+        const response = await fetch(`${apiUrl}/api/fleet/reports/history?limit=10`);
+        if (response.ok) {
+          const data = await response.json();
+          setReportHistory(data.reports || []);
+        }
+      } catch (error) {
+        console.error("Failed to load history:", error);
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    };
+    loadHistory();
+  }, [apiUrl]);
 
   const handleGenerateReport = async () => {
+    if (!selectedDevice) return;
+
     setIsGenerating(true);
     try {
-      const endpoint = format === "pdf"
-        ? `${apiUrl}/api/fleet/export/pdf`
-        : `${apiUrl}/api/fleet/export/csv?range=${timeRange}`;
+      const response = await fetch(`${apiUrl}/api/fleet/reports/pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          device_id: selectedDevice,
+          month: selectedMonth,
+          year: selectedYear,
+          format: reportFormat,
+        }),
+      });
 
-      const response = await fetch(endpoint);
-      if (!response.ok) {
-        throw new Error("Report generation failed");
-      }
+      if (!response.ok) throw new Error("Failed to generate report");
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      const extension = format === "pdf" ? "pdf" : "csv";
-      a.download = `asset-${reportType}-report-${new Date().toISOString().split("T")[0]}.${extension}`;
+
+      // Determine file extension based on format
+      const deviceLabel = selectedDevice === "all" ? "all-assets" : selectedDevice;
+      const ext = reportFormat === "pdf" ? "pdf" : reportFormat === "csv" ? "csv" : "zip";
+      a.download = `fleet-report-${deviceLabel}-${selectedYear}-${String(selectedMonth).padStart(2, "0")}.${ext}`;
+
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
+
+      // Refresh history
+      const historyResponse = await fetch(`${apiUrl}/api/fleet/reports/history?limit=10`);
+      if (historyResponse.ok) {
+        const data = await historyResponse.json();
+        setReportHistory(data.reports || []);
+      }
     } catch (error) {
       console.error("Report generation failed:", error);
     } finally {
@@ -230,457 +191,392 @@ export default function ReportsPage() {
     }
   };
 
-  // Chart data
-  const tempTrendData = generateTempTrendData(timeRange);
-  const powerData = generatePowerData(timeRange);
-  const anomalyData = generateAnomalyData(timeRange);
+  const handleDownloadInfographic = async () => {
+    if (!selectedDevice || selectedDevice === "all") return;
 
-  const statusData = [
-    { name: "healthy", value: summary.healthy, fill: "#2dd4bf" },
-    { name: "warning", value: summary.warning, fill: "#818cf8" },
-    { name: "critical", value: summary.critical, fill: "#8b5cf6" },
-  ];
+    setIsGeneratingInfographic(true);
+    try {
+      const response = await fetch(`${apiUrl}/api/fleet/reports/infographic`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          device_id: selectedDevice,
+          month: selectedMonth,
+          year: selectedYear,
+        }),
+      });
 
-  const timeRangeLabel = timeRange === "24h" ? "Last 24 Hours" : timeRange === "7d" ? "Last 7 Days" : "Last 30 Days";
+      if (!response.ok) throw new Error("Failed to generate infographic");
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `fleet-infographic-${selectedDevice}-${selectedYear}-${String(selectedMonth).padStart(2, "0")}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error("Infographic generation failed:", error);
+    } finally {
+      setIsGeneratingInfographic(false);
+    }
+  };
+
+  const getComplianceDisplay = (status: string) => {
+    switch (status) {
+      case "compliant":
+        return { icon: CheckCircle, color: "text-emerald-600", bg: "bg-emerald-50", label: "Pass" };
+      case "warning":
+        return { icon: AlertTriangle, color: "text-amber-600", bg: "bg-amber-50", label: "Warn" };
+      case "non_compliant":
+        return { icon: XCircle, color: "text-rose-600", bg: "bg-rose-50", label: "Fail" };
+      default:
+        return { icon: CheckCircle, color: "text-slate-600", bg: "bg-slate-50", label: "N/A" };
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex">
-      {/* Sidebar */}
-      <FreezerSidebar
-        collapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-      />
+    <div className="min-h-screen bg-slate-100">
+      {/* Header */}
+      <header className="border-b bg-white sticky top-0 z-10">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 rounded-xl">
+                <Snowflake className="h-6 w-6 text-blue-600" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-slate-900">Fleet Compliance Reports</h1>
+                <p className="text-sm text-slate-500">Audit-Ready Asset Reports</p>
+              </div>
+            </div>
+            <Link
+              href="/freezer"
+              className="text-sm text-slate-500 hover:text-slate-700 flex items-center gap-1"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Fleet Dashboard
+            </Link>
+          </div>
+        </div>
+      </header>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Top Header */}
-        <FleetHeader
-          title="Reporting Suite"
-          isConnected={true}
-          isOnline={true}
-          alertCount={0}
-          pageIcon={FileText}
-          breadcrumbs={[
-            { label: "Home", href: "/", icon: Home },
-            { label: "Dashboard", href: "/freezer", icon: LayoutGrid },
-          ]}
-        />
-
-        {/* Content Area */}
-        <main className="flex-1 overflow-auto p-6">
-          <div className="flex gap-6">
-            {/* Left Column - Charts */}
-            <div className="flex-1 space-y-6">
-              {/* Summary Stats */}
-              <div className="grid grid-cols-4 gap-4">
-                <div className="bg-white border p-4">
-                  <div className="text-xs text-slate-500 mb-1">Total Assets</div>
-                  <div className="text-2xl font-bold text-slate-900">{summary.total}</div>
-                </div>
-                <div className="bg-white border p-4">
-                  <div className="text-xs text-slate-500 mb-1 flex items-center gap-1">
-                    <Thermometer className="h-3 w-3" /> Avg Temp
-                  </div>
-                  <div className="text-2xl font-bold text-cyan-600">{summary.avgTemp.toFixed(1)}°C</div>
-                </div>
-                <div className="bg-white border p-4">
-                  <div className="text-xs text-slate-500 mb-1 flex items-center gap-1">
-                    <Zap className="h-3 w-3" /> Avg Power
-                  </div>
-                  <div className="text-2xl font-bold text-emerald-600">{summary.avgPower.toFixed(0)}W</div>
-                </div>
-                <div className="bg-white border p-4">
-                  <div className="text-xs text-slate-500 mb-1 flex items-center gap-1">
-                    <AlertTriangle className="h-3 w-3" /> Anomalies
-                  </div>
-                  <div className="text-2xl font-bold text-amber-600">{summary.anomalyCount}</div>
-                </div>
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        {/* Generate Report Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-blue-600" />
+              Generate Compliance Report
+            </CardTitle>
+            <CardDescription>
+              Create an audit-ready compliance report for a fleet asset
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Selection Row */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Device Selection */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">Asset</label>
+                <Select value={selectedDevice} onValueChange={setSelectedDevice}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select device..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Assets</SelectItem>
+                    {devices.map((device) => (
+                      <SelectItem key={device.device_id} value={device.device_id}>
+                        {device.device_id} - {device.location_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
-              {/* Temperature Trend Chart */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Temperature Trend</CardTitle>
-                  <CardDescription>{timeRangeLabel}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ChartContainer config={tempChartConfig} className="h-[250px] w-full">
-                    <LineChart
-                      data={tempTrendData}
-                      margin={{ left: 12, right: 12, top: 12, bottom: 12 }}
-                    >
-                      <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                      <XAxis
-                        dataKey="name"
-                        tickLine={false}
-                        axisLine={false}
-                        tickMargin={8}
-                        tickFormatter={(value) => value.slice(0, 5)}
-                      />
-                      <YAxis
-                        tickLine={false}
-                        axisLine={false}
-                        tickMargin={8}
-                        domain={[-25, -10]}
-                        tickFormatter={(value) => `${value}°`}
-                      />
-                      <ChartTooltip
-                        cursor={false}
-                        content={<ChartTooltipContent />}
-                      />
-                      <ChartLegend content={<ChartLegendContent />} />
-                      <Line
-                        dataKey="avg"
-                        type="monotone"
-                        stroke="var(--color-avg)"
-                        strokeWidth={2}
-                        dot={false}
-                      />
-                      <Line
-                        dataKey="min"
-                        type="monotone"
-                        stroke="var(--color-min)"
-                        strokeWidth={1}
-                        dot={false}
-                        strokeDasharray="4 4"
-                      />
-                      <Line
-                        dataKey="max"
-                        type="monotone"
-                        stroke="var(--color-max)"
-                        strokeWidth={1}
-                        dot={false}
-                        strokeDasharray="4 4"
-                      />
-                    </LineChart>
-                  </ChartContainer>
-                </CardContent>
-              </Card>
-
-              {/* Two Column Charts */}
-              <div className="grid grid-cols-2 gap-6">
-                {/* Status Distribution */}
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base">Status Distribution</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ChartContainer config={statusChartConfig} className="h-[200px] w-full">
-                      <PieChart>
-                        <ChartTooltip
-                          cursor={false}
-                          content={<ChartTooltipContent hideLabel />}
-                        />
-                        <Pie
-                          data={statusData}
-                          dataKey="value"
-                          nameKey="name"
-                          innerRadius={50}
-                          outerRadius={80}
-                          paddingAngle={2}
-                        />
-                        <ChartLegend content={<ChartLegendContent nameKey="name" />} />
-                      </PieChart>
-                    </ChartContainer>
-                  </CardContent>
-                </Card>
-
-                {/* Anomaly Breakdown */}
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base">Anomaly Breakdown</CardTitle>
-                    <CardDescription>{timeRangeLabel}</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ChartContainer config={anomalyChartConfig} className="h-[200px] w-full">
-                      <BarChart
-                        data={anomalyData}
-                        layout="vertical"
-                        margin={{ left: 0, right: 12 }}
-                      >
-                        <CartesianGrid horizontal={false} strokeDasharray="3 3" />
-                        <XAxis type="number" tickLine={false} axisLine={false} />
-                        <YAxis
-                          dataKey="name"
-                          type="category"
-                          tickLine={false}
-                          axisLine={false}
-                          tickMargin={8}
-                          width={100}
-                          tick={{ fontSize: 11 }}
-                        />
-                        <ChartTooltip
-                          cursor={false}
-                          content={<ChartTooltipContent hideLabel />}
-                        />
-                        <Bar dataKey="value" radius={4} />
-                      </BarChart>
-                    </ChartContainer>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Power Consumption Chart */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Power Consumption</CardTitle>
-                  <CardDescription>{timeRangeLabel}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ChartContainer config={powerChartConfig} className="h-[200px] w-full">
-                    <BarChart
-                      data={powerData}
-                      margin={{ left: 12, right: 12 }}
-                    >
-                      <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                      <XAxis
-                        dataKey="name"
-                        tickLine={false}
-                        axisLine={false}
-                        tickMargin={8}
-                        tickFormatter={(value) => value.slice(0, 5)}
-                      />
-                      <YAxis
-                        tickLine={false}
-                        axisLine={false}
-                        tickMargin={8}
-                        tickFormatter={(value) => `${value}W`}
-                      />
-                      <ChartTooltip
-                        cursor={false}
-                        content={<ChartTooltipContent />}
-                      />
-                      <Bar dataKey="power" fill="var(--color-power)" radius={4} />
-                    </BarChart>
-                  </ChartContainer>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Right Column - Report Generator */}
-            <div className="w-96 flex-shrink-0 space-y-6">
-              {/* Report Generator Card */}
-              <Card>
-                <CardHeader className="pb-4">
-                  <CardTitle className="text-xl font-bold">Generate Report</CardTitle>
-                  <CardDescription>Export the data shown in charts</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {/* Report Type */}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-900 mb-3">
-                      Report Type
-                    </label>
-                    <div className="flex flex-col gap-3">
-                      <button
-                        onClick={() => setReportType("summary")}
-                        className={`w-full p-4 rounded-lg border-2 text-left transition-all flex items-center justify-between ${
-                          reportType === "summary"
-                            ? "bg-slate-900 border-slate-900 text-white"
-                            : "border-slate-200 hover:border-slate-300 bg-white"
-                        }`}
-                      >
-                        <div>
-                          <div className="font-semibold">Summary</div>
-                          <div className={`text-sm ${reportType === "summary" ? "text-slate-300" : "text-slate-500"}`}>
-                            High-level overview
-                          </div>
-                        </div>
-                        {reportType === "summary" && (
-                          <div className="h-6 w-6 bg-teal-500 rounded-full flex items-center justify-center">
-                            <Check className="h-4 w-4 text-white" />
-                          </div>
-                        )}
-                      </button>
-                      <button
-                        onClick={() => setReportType("detailed")}
-                        className={`w-full p-4 rounded-lg border-2 text-left transition-all flex items-center justify-between ${
-                          reportType === "detailed"
-                            ? "bg-slate-900 border-slate-900 text-white"
-                            : "border-slate-200 hover:border-slate-300 bg-white"
-                        }`}
-                      >
-                        <div>
-                          <div className="font-semibold">Detailed</div>
-                          <div className={`text-sm ${reportType === "detailed" ? "text-slate-300" : "text-slate-500"}`}>
-                            Full analysis report
-                          </div>
-                        </div>
-                        {reportType === "detailed" && (
-                          <div className="h-6 w-6 bg-teal-500 rounded-full flex items-center justify-center">
-                            <Check className="h-4 w-4 text-white" />
-                          </div>
-                        )}
-                      </button>
-                      <button
-                        onClick={() => setReportType("anomaly")}
-                        className={`w-full p-4 rounded-lg border-2 text-left transition-all flex items-center justify-between ${
-                          reportType === "anomaly"
-                            ? "bg-slate-900 border-slate-900 text-white"
-                            : "border-slate-200 hover:border-slate-300 bg-white"
-                        }`}
-                      >
-                        <div>
-                          <div className="font-semibold">Anomaly Log</div>
-                          <div className={`text-sm ${reportType === "anomaly" ? "text-slate-300" : "text-slate-500"}`}>
-                            All detected issues
-                          </div>
-                        </div>
-                        {reportType === "anomaly" && (
-                          <div className="h-6 w-6 bg-teal-500 rounded-full flex items-center justify-center">
-                            <Check className="h-4 w-4 text-white" />
-                          </div>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Time Range */}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-900 mb-3">
-                      Time Range
-                    </label>
-                    <div className="flex flex-col gap-3">
-                      <button
-                        onClick={() => setTimeRange("24h")}
-                        className={`w-full px-4 py-3 rounded-lg border-2 text-left transition-all flex items-center justify-between ${
-                          timeRange === "24h"
-                            ? "bg-slate-900 border-slate-900 text-white"
-                            : "border-slate-200 hover:border-slate-300 bg-white"
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <Clock className={`h-5 w-5 ${timeRange === "24h" ? "text-slate-400" : "text-slate-400"}`} />
-                          <span className="font-medium">Last 24 Hours</span>
-                        </div>
-                        {timeRange === "24h" && (
-                          <Check className="h-5 w-5 text-teal-400" />
-                        )}
-                      </button>
-                      <button
-                        onClick={() => setTimeRange("7d")}
-                        className={`w-full px-4 py-3 rounded-lg border-2 text-left transition-all flex items-center justify-between ${
-                          timeRange === "7d"
-                            ? "bg-slate-900 border-slate-900 text-white"
-                            : "border-slate-200 hover:border-slate-300 bg-white"
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <Clock className={`h-5 w-5 ${timeRange === "7d" ? "text-slate-400" : "text-slate-400"}`} />
-                          <span className="font-medium">Last 7 Days</span>
-                        </div>
-                        {timeRange === "7d" && (
-                          <Check className="h-5 w-5 text-teal-400" />
-                        )}
-                      </button>
-                      <button
-                        onClick={() => setTimeRange("30d")}
-                        className={`w-full px-4 py-3 rounded-lg border-2 text-left transition-all flex items-center justify-between ${
-                          timeRange === "30d"
-                            ? "bg-slate-900 border-slate-900 text-white"
-                            : "border-slate-200 hover:border-slate-300 bg-white"
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <Clock className={`h-5 w-5 ${timeRange === "30d" ? "text-slate-400" : "text-slate-400"}`} />
-                          <span className="font-medium">Last 30 Days</span>
-                        </div>
-                        {timeRange === "30d" && (
-                          <Check className="h-5 w-5 text-teal-400" />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Format */}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-900 mb-3">
-                      Format
-                    </label>
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => setFormat("pdf")}
-                        className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all flex items-center justify-center gap-2 font-medium ${
-                          format === "pdf"
-                            ? "bg-slate-900 border-slate-900 text-white"
-                            : "border-slate-200 hover:border-slate-300 bg-white text-slate-700"
-                        }`}
-                      >
-                        <FileText className="h-5 w-5" />
-                        PDF
-                      </button>
-                      <button
-                        onClick={() => setFormat("csv")}
-                        className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all flex items-center justify-center gap-2 font-medium ${
-                          format === "csv"
-                            ? "bg-slate-900 border-slate-900 text-white"
-                            : "border-slate-200 hover:border-slate-300 bg-white text-slate-700"
-                        }`}
-                      >
-                        <Grid3X3 className="h-5 w-5" />
-                        CSV
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Generate Button */}
-                  <button
-                    onClick={handleGenerateReport}
-                    disabled={isGenerating}
-                    className="w-full py-4 rounded-lg bg-slate-900 text-white font-semibold flex items-center justify-center gap-2 hover:bg-slate-800 transition-colors disabled:opacity-50"
+              {/* Month Selection */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">Period</label>
+                <div className="flex gap-2">
+                  <Select
+                    value={String(selectedMonth)}
+                    onValueChange={(v) => setSelectedMonth(parseInt(v))}
                   >
-                    {isGenerating ? (
-                      <>
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <Download className="h-5 w-5" />
-                        Generate Report
-                      </>
-                    )}
-                  </button>
-                </CardContent>
-              </Card>
+                    <SelectTrigger className="flex-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MONTHS.map((month, idx) => (
+                        <SelectItem key={idx} value={String(idx + 1)}>
+                          {month}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={String(selectedYear)}
+                    onValueChange={(v) => setSelectedYear(parseInt(v))}
+                  >
+                    <SelectTrigger className="w-24">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[2024, 2025, 2026].map((year) => (
+                        <SelectItem key={year} value={String(year)}>
+                          {year}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
 
-              {/* Quick Export */}
-              <Card>
-                <CardContent className="p-6">
-                  <h3 className="font-semibold text-slate-900 mb-4">Quick Export</h3>
-                  <div className="space-y-3 border-l-2 border-slate-200 pl-4">
-                    <button
-                      className="w-full flex items-center gap-3 hover:bg-slate-50 transition-colors py-2 text-left"
-                      onClick={() => { setFormat("csv"); setTimeRange("24h"); handleGenerateReport(); }}
-                    >
-                      <div className="p-2 bg-teal-100 text-teal-600 rounded-lg">
-                        <Grid3X3 className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <div className="font-semibold text-slate-900">CSV Export</div>
-                        <div className="text-sm text-slate-500">Current snapshot</div>
-                      </div>
-                    </button>
-
-                    <button
-                      className="w-full flex items-center gap-3 hover:bg-slate-50 transition-colors py-2 text-left"
-                      onClick={() => { setFormat("pdf"); handleGenerateReport(); }}
-                    >
-                      <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
-                        <FileText className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <div className="font-semibold text-slate-900">PDF Report</div>
-                        <div className="text-sm text-slate-500">Full status report</div>
-                      </div>
-                    </button>
-                  </div>
-                </CardContent>
-              </Card>
+              {/* Format Selection */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">Format</label>
+                <Select value={reportFormat} onValueChange={(v) => setReportFormat(v as "both" | "pdf" | "csv")}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="both">PDF + CSV (ZIP)</SelectItem>
+                    <SelectItem value="pdf">PDF Only</SelectItem>
+                    <SelectItem value="csv">CSV Only</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-          </div>
-        </main>
-      </div>
+
+            {/* Generate Buttons */}
+            <div className="flex gap-3">
+              <Button
+                onClick={handleGenerateReport}
+                disabled={isGenerating || !selectedDevice}
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                size="lg"
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Generating {selectedDevice === "all" ? "All Assets " : ""}Report{reportFormat === "both" ? " Package" : ""}...
+                  </>
+                ) : (
+                  <>
+                    {reportFormat === "both" ? (
+                      <Package className="h-4 w-4 mr-2" />
+                    ) : (
+                      <Download className="h-4 w-4 mr-2" />
+                    )}
+                    Generate {selectedDevice === "all" ? "All Assets " : ""}{reportFormat === "both" ? "Report Package" : reportFormat === "pdf" ? "PDF Report" : "CSV Data"}
+                  </>
+                )}
+              </Button>
+
+              {/* Infographic Button */}
+              <Button
+                onClick={handleDownloadInfographic}
+                disabled={isGeneratingInfographic || !selectedDevice || selectedDevice === "all"}
+                variant="outline"
+                size="lg"
+                className="border-cyan-300 text-cyan-700 hover:bg-cyan-50"
+              >
+                {isGeneratingInfographic ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Image className="h-4 w-4 mr-2" />
+                    Infographic
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {selectedDevice === "all" && (
+              <p className="text-xs text-slate-500 text-center">
+                Infographic is available for individual assets only
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Key Metrics Preview */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Key Metrics Preview</CardTitle>
+            <CardDescription>
+              {selectedDevice ? `${MONTHS[selectedMonth - 1]} ${selectedYear} - ${selectedDevice}` : "Select a device"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoadingMetrics ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+              </div>
+            ) : metrics ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {/* MKT */}
+                <div className="text-center p-4 bg-slate-50 rounded-lg">
+                  <ThermometerSnowflake className="h-5 w-5 mx-auto mb-2 text-blue-600" />
+                  <div className="text-xs text-slate-500 mb-1">MKT</div>
+                  <div className="text-xl font-bold text-slate-900">
+                    {metrics.mkt ? `${metrics.mkt.mkt}°C` : "N/A"}
+                  </div>
+                  {metrics.mkt && (
+                    <Badge
+                      variant="outline"
+                      className={
+                        metrics.mkt.interpretation === "PASS"
+                          ? "border-emerald-300 text-emerald-700"
+                          : metrics.mkt.interpretation === "MARGINAL"
+                          ? "border-amber-300 text-amber-700"
+                          : "border-rose-300 text-rose-700"
+                      }
+                    >
+                      {metrics.mkt.interpretation}
+                    </Badge>
+                  )}
+                </div>
+
+                {/* Efficiency */}
+                <div className="text-center p-4 bg-slate-50 rounded-lg">
+                  <Zap className="h-5 w-5 mx-auto mb-2 text-teal-600" />
+                  <div className="text-xs text-slate-500 mb-1">Efficiency</div>
+                  <div className="text-xl font-bold text-slate-900">
+                    {metrics.efficiency?.score !== undefined ? `${metrics.efficiency.score}%` : "N/A"}
+                  </div>
+                  {metrics.efficiency && (
+                    <Badge
+                      variant="outline"
+                      className={
+                        metrics.efficiency.score >= 85
+                          ? "border-emerald-300 text-emerald-700"
+                          : metrics.efficiency.score >= 70
+                          ? "border-amber-300 text-amber-700"
+                          : "border-rose-300 text-rose-700"
+                      }
+                    >
+                      {metrics.efficiency.interpretation}
+                    </Badge>
+                  )}
+                </div>
+
+                {/* Door Events */}
+                <div className="text-center p-4 bg-slate-50 rounded-lg">
+                  <DoorOpen className="h-5 w-5 mx-auto mb-2 text-indigo-600" />
+                  <div className="text-xs text-slate-500 mb-1">Door Events</div>
+                  <div className="text-xl font-bold text-slate-900">
+                    {metrics.operations?.doorOpenEvents ?? "N/A"}
+                  </div>
+                </div>
+
+                {/* Faults */}
+                <div className="text-center p-4 bg-slate-50 rounded-lg">
+                  <AlertTriangle className="h-5 w-5 mx-auto mb-2 text-amber-600" />
+                  <div className="text-xs text-slate-500 mb-1">Faults</div>
+                  <div className="text-xl font-bold text-slate-900">
+                    {metrics.operations?.faultEvents ?? "N/A"}
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className={
+                      (metrics.operations?.faultEvents || 0) === 0
+                        ? "border-emerald-300 text-emerald-700"
+                        : "border-rose-300 text-rose-700"
+                    }
+                  >
+                    {(metrics.operations?.faultEvents || 0) === 0 ? "None" : "Action Required"}
+                  </Badge>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-slate-500">
+                {selectedDevice ? "No data available for selected period" : "Select a device to preview metrics"}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Report History */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Report History</CardTitle>
+            <CardDescription>Previously generated fleet compliance reports</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoadingHistory ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+              </div>
+            ) : reportHistory.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="text-left text-sm text-slate-500 border-b">
+                      <th className="pb-3 font-medium">Report</th>
+                      <th className="pb-3 font-medium">Device</th>
+                      <th className="pb-3 font-medium">MKT</th>
+                      <th className="pb-3 font-medium">Status</th>
+                      <th className="pb-3 font-medium">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reportHistory.map((report) => {
+                      const compliance = getComplianceDisplay(report.compliance_status);
+                      const ComplianceIcon = compliance.icon;
+                      const reportDate = new Date(report.report_month);
+                      const monthName = MONTHS[reportDate.getMonth()];
+                      const year = reportDate.getFullYear();
+
+                      return (
+                        <tr key={report.id} className="border-b last:border-0">
+                          <td className="py-3">
+                            <div className="font-medium text-slate-900">
+                              {monthName} {year}
+                            </div>
+                            <div className="text-xs text-slate-500">
+                              {new Date(report.generated_at).toLocaleDateString()}
+                            </div>
+                          </td>
+                          <td className="py-3 text-sm text-slate-600">
+                            {report.device_id}
+                          </td>
+                          <td className="py-3 text-sm font-mono">
+                            {report.mkt_celsius ? `${report.mkt_celsius}°C` : "N/A"}
+                          </td>
+                          <td className="py-3">
+                            <Badge
+                              variant="outline"
+                              className={`${compliance.bg} ${compliance.color} border-0`}
+                            >
+                              <ComplianceIcon className="h-3 w-3 mr-1" />
+                              {compliance.label}
+                            </Badge>
+                          </td>
+                          <td className="py-3">
+                            <Button variant="ghost" size="sm">
+                              <Download className="h-4 w-4" />
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-slate-500">
+                No fleet reports generated yet
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </main>
     </div>
   );
 }

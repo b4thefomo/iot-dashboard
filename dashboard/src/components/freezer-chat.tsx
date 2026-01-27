@@ -17,7 +17,6 @@ import {
 import { FreezerReading } from "@/hooks/use-fleet-data";
 import {
   Send,
-  Bot,
   User,
   Loader2,
   Download,
@@ -394,7 +393,16 @@ export function FreezerChat({ fleetStatus }: FreezerChatProps) {
           <div className="p-4 space-y-6">
             {messages.length === 0 ? (
               <div className="text-center py-16">
-                <Bot className="h-16 w-16 mx-auto mb-4 text-slate-300" />
+                {/* AI Avatar */}
+                <div className="relative w-16 h-16 mx-auto mb-4">
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/40 animate-pulse">
+                    <div className="flex gap-2">
+                      <div className="w-2.5 h-4 bg-white rounded-full" />
+                      <div className="w-2.5 h-4 bg-white rounded-full" />
+                    </div>
+                  </div>
+                  <div className="absolute inset-0 rounded-full bg-blue-400 animate-ping opacity-20" />
+                </div>
                 <h4 className="text-lg font-medium text-slate-700 mb-2">
                   How can I help you today?
                 </h4>
@@ -419,8 +427,13 @@ export function FreezerChat({ fleetStatus }: FreezerChatProps) {
                 <div key={index} className="flex gap-3">
                   {message.role === "assistant" ? (
                     <>
-                      <div className="flex-shrink-0 w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center">
-                        <Bot className="h-4 w-4 text-slate-600" />
+                      <div className="relative flex-shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shadow-md shadow-blue-500/30">
+                          <div className="flex gap-1">
+                            <div className="w-1.5 h-2 bg-white rounded-full" />
+                            <div className="w-1.5 h-2 bg-white rounded-full" />
+                          </div>
+                        </div>
                       </div>
                       <div className="flex-1 min-w-0">
                         {/* Tool execution indicator */}
@@ -497,8 +510,14 @@ export function FreezerChat({ fleetStatus }: FreezerChatProps) {
             )}
             {isLoading && (
               <div className="flex gap-3">
-                <div className="flex-shrink-0 w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center">
-                  <Bot className="h-4 w-4 text-slate-600" />
+                <div className="relative flex-shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shadow-md shadow-blue-500/30 animate-pulse">
+                    <div className="flex gap-1">
+                      <div className="w-1.5 h-2 bg-white rounded-full" />
+                      <div className="w-1.5 h-2 bg-white rounded-full" />
+                    </div>
+                  </div>
+                  <div className="absolute inset-0 rounded-full bg-blue-400 animate-ping opacity-20" />
                 </div>
                 <div className="bg-slate-50 rounded-2xl rounded-tl-none px-4 py-3 border-l-4 border-cyan-400">
                   <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
@@ -617,7 +636,16 @@ export function FreezerChat({ fleetStatus }: FreezerChatProps) {
           <ScrollArea className="h-full p-4" ref={scrollRef}>
             {messages.length === 0 ? (
               <div className="text-center py-8">
-                <Bot className="h-10 w-10 mx-auto mb-3 text-slate-300" />
+                {/* AI Avatar */}
+                <div className="relative w-10 h-10 mx-auto mb-3">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/40 animate-pulse">
+                    <div className="flex gap-1">
+                      <div className="w-1.5 h-2.5 bg-white rounded-full" />
+                      <div className="w-1.5 h-2.5 bg-white rounded-full" />
+                    </div>
+                  </div>
+                  <div className="absolute inset-0 rounded-full bg-blue-400 animate-ping opacity-20" />
+                </div>
                 <p className="text-sm text-slate-500 mb-4">
                   Ask me about your fleet
                 </p>
@@ -637,8 +665,11 @@ export function FreezerChat({ fleetStatus }: FreezerChatProps) {
                     className={`flex gap-2 ${message.role === "user" ? "justify-end" : "justify-start"}`}
                   >
                     {message.role === "assistant" && (
-                      <div className="w-6 h-6 bg-slate-100 rounded flex items-center justify-center flex-shrink-0">
-                        <Bot className="h-3 w-3 text-slate-600" />
+                      <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center flex-shrink-0 shadow-sm shadow-blue-500/30">
+                        <div className="flex gap-0.5">
+                          <div className="w-1 h-1.5 bg-white rounded-full" />
+                          <div className="w-1 h-1.5 bg-white rounded-full" />
+                        </div>
                       </div>
                     )}
                     <div
@@ -663,8 +694,14 @@ export function FreezerChat({ fleetStatus }: FreezerChatProps) {
                 ))}
                 {isLoading && (
                   <div className="flex gap-2">
-                    <div className="w-6 h-6 bg-slate-100 rounded flex items-center justify-center">
-                      <Bot className="h-3 w-3 text-slate-600" />
+                    <div className="relative">
+                      <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shadow-sm shadow-blue-500/30 animate-pulse">
+                        <div className="flex gap-0.5">
+                          <div className="w-1 h-1.5 bg-white rounded-full" />
+                          <div className="w-1 h-1.5 bg-white rounded-full" />
+                        </div>
+                      </div>
+                      <div className="absolute inset-0 rounded-full bg-blue-400 animate-ping opacity-20" />
                     </div>
                     <div className="bg-slate-50 rounded-xl rounded-tl-none px-3 py-2">
                       <Loader2 className="h-4 w-4 animate-spin" />

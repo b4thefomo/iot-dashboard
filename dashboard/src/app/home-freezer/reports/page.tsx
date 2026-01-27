@@ -33,6 +33,7 @@ import {
   Activity,
   Moon,
   ThermometerSnowflake,
+  Package,
 } from "lucide-react";
 
 interface ReportMetrics {
@@ -62,6 +63,7 @@ export default function GuardianLedgerReportsPage() {
   const [selectedDevice, setSelectedDevice] = useState("home_freezer_sim");
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [reportFormat, setReportFormat] = useState<"both" | "pdf" | "csv">("both");
   const [options, setOptions] = useState({
     nightGapAnalysis: true,
     vibrationHealth: true,
@@ -132,6 +134,7 @@ export default function GuardianLedgerReportsPage() {
           device_id: selectedDevice,
           month: selectedMonth,
           year: selectedYear,
+          format: reportFormat,
           options: {
             includeNightGap: options.nightGapAnalysis,
             includeVibration: options.vibrationHealth,
@@ -147,7 +150,11 @@ export default function GuardianLedgerReportsPage() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `guardian-ledger-${selectedDevice}-${selectedYear}-${String(selectedMonth).padStart(2, "0")}.pdf`;
+
+      // Determine file extension based on format
+      const ext = reportFormat === "pdf" ? "pdf" : reportFormat === "csv" ? "csv" : "zip";
+      a.download = `guardian-ledger-${selectedDevice}-${selectedYear}-${String(selectedMonth).padStart(2, "0")}.${ext}`;
+
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -292,47 +299,71 @@ export default function GuardianLedgerReportsPage() {
                 </div>
               </div>
 
-              {/* Report Options */}
+              {/* Format Selection */}
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Include</label>
-                <div className="space-y-2">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="nightGap"
-                      checked={options.nightGapAnalysis}
-                      onCheckedChange={(checked) =>
-                        setOptions((prev) => ({ ...prev, nightGapAnalysis: !!checked }))
-                      }
-                    />
-                    <label htmlFor="nightGap" className="text-sm text-slate-600">
-                      Night Gap Analysis
-                    </label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="vibration"
-                      checked={options.vibrationHealth}
-                      onCheckedChange={(checked) =>
-                        setOptions((prev) => ({ ...prev, vibrationHealth: !!checked }))
-                      }
-                    />
-                    <label htmlFor="vibration" className="text-sm text-slate-600">
-                      Vibration Health
-                    </label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="aiSummaries"
-                      checked={options.aiSummaries}
-                      onCheckedChange={(checked) =>
-                        setOptions((prev) => ({ ...prev, aiSummaries: !!checked }))
-                      }
-                    />
-                    <label htmlFor="aiSummaries" className="text-sm text-slate-600">
-                      AI Summaries
-                    </label>
-                  </div>
-                </div>
+                <label className="text-sm font-medium text-slate-700">Format</label>
+                <Select value={reportFormat} onValueChange={(v) => setReportFormat(v as "both" | "pdf" | "csv")}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="both">PDF + CSV (ZIP)</SelectItem>
+                    <SelectItem value="pdf">PDF Only</SelectItem>
+                    <SelectItem value="csv">CSV Only</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Report Options */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-slate-50 rounded-lg">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="nightGap"
+                  checked={options.nightGapAnalysis}
+                  onCheckedChange={(checked) =>
+                    setOptions((prev) => ({ ...prev, nightGapAnalysis: !!checked }))
+                  }
+                />
+                <label htmlFor="nightGap" className="text-sm text-slate-600">
+                  Night Gap Analysis
+                </label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="vibration"
+                  checked={options.vibrationHealth}
+                  onCheckedChange={(checked) =>
+                    setOptions((prev) => ({ ...prev, vibrationHealth: !!checked }))
+                  }
+                />
+                <label htmlFor="vibration" className="text-sm text-slate-600">
+                  Vibration Health
+                </label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="aiSummaries"
+                  checked={options.aiSummaries}
+                  onCheckedChange={(checked) =>
+                    setOptions((prev) => ({ ...prev, aiSummaries: !!checked }))
+                  }
+                />
+                <label htmlFor="aiSummaries" className="text-sm text-slate-600">
+                  AI Summaries
+                </label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="engineerBrief"
+                  checked={options.engineerBrief}
+                  onCheckedChange={(checked) =>
+                    setOptions((prev) => ({ ...prev, engineerBrief: !!checked }))
+                  }
+                />
+                <label htmlFor="engineerBrief" className="text-sm text-slate-600">
+                  Engineer Brief
+                </label>
               </div>
             </div>
 
@@ -346,12 +377,16 @@ export default function GuardianLedgerReportsPage() {
               {isGenerating ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Generating Report...
+                  Generating Report{reportFormat === "both" ? " Package" : ""}...
                 </>
               ) : (
                 <>
-                  <FileText className="h-4 w-4 mr-2" />
-                  Generate Audit-Ready Report
+                  {reportFormat === "both" ? (
+                    <Package className="h-4 w-4 mr-2" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-2" />
+                  )}
+                  {reportFormat === "both" ? "Generate Report Package (PDF + CSV)" : reportFormat === "pdf" ? "Generate PDF Report" : "Generate CSV Data Export"}
                 </>
               )}
             </Button>

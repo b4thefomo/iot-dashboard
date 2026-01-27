@@ -10,6 +10,8 @@ const path = require('path');
 const PDFDocument = require('pdfkit');
 const { createClient } = require('@supabase/supabase-js');
 const nodemailer = require('nodemailer');
+const puppeteer = require('puppeteer');
+const archiver = require('archiver');
 
 // Initialize Supabase client
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -228,10 +230,10 @@ async function loadFleetDataFromSupabase() {
             }
 
             if (latestReading) {
-                // Get device location info
+                // Get device location info with coordinates
                 const { data: deviceInfo } = await supabase
                     .from('devices')
-                    .select('*, locations(name)')
+                    .select('*, locations(name, lat, lon)')
                     .eq('device_id', device_id)
                     .single();
 
@@ -240,6 +242,8 @@ async function loadFleetDataFromSupabase() {
                     device_id: latestReading.device_id,
                     timestamp: latestReading.timestamp,
                     location_name: deviceInfo?.locations?.name || 'Unknown',
+                    lat: deviceInfo?.locations?.lat ? parseFloat(deviceInfo.locations.lat) : 54.5,
+                    lon: deviceInfo?.locations?.lon ? parseFloat(deviceInfo.locations.lon) : -3.5,
                     temp_cabinet: parseFloat(latestReading.temp_cabinet),
                     temp_ambient: latestReading.temp_ambient ? parseFloat(latestReading.temp_ambient) : null,
                     compressor_power_w: latestReading.compressor_power_w ? parseFloat(latestReading.compressor_power_w) : 0,
@@ -2247,9 +2251,148 @@ app.get('/api/home-freezer/reports/:id/download', async (req, res) => {
     generateGuardianLedgerPDF(res, reportData);
 });
 
-// API: Generate PDF on-demand (without storing)
+// API: Get report data as JSON for Puppeteer rendering
+app.get('/api/home-freezer/reports/data', async (req, res) => {
+    const { device_id, month, year } = req.query;
+
+    if (!device_id) {
+        return res.status(400).json({ error: 'device_id is required' });
+    }
+
+    const targetMonth = parseInt(month) || new Date().getMonth() + 1;
+    const targetYear = parseInt(year) || new Date().getFullYear();
+    const period = `${targetYear}-${String(targetMonth).padStart(2, '0')}`;
+
+    const startDate = new Date(targetYear, targetMonth - 1, 1);
+    const endDate = new Date(targetYear, targetMonth, 0, 23, 59, 59);
+
+    let readings = [];
+
+    if (supabase) {
+        try {
+            const { data, error } = await supabase
+                .from('home_freezer_readings')
+                .select('*')
+                .eq('device_id', device_id)
+                .gte('timestamp', startDate.toISOString())
+                .lte('timestamp', endDate.toISOString())
+                .order('timestamp', { ascending: true });
+
+            if (!error && data) readings = data;
+        } catch (error) {
+            console.error("Supabase query error:", error);
+        }
+    }
+
+    if (readings.length === 0) {
+        const history = device_id === 'FREEZER_MAIN' ? homeFreezer2History : homeFreezerHistory;
+        readings = history.filter(r => {
+            const ts = new Date(r.timestamp);
+            return ts >= startDate && ts <= endDate;
+        });
+    }
+
+    if (readings.length === 0) {
+        return res.status(404).json({ error: 'No data found for the specified period' });
+    }
+
+    const temps = readings.map(r => parseFloat(r.temp_c) || r.temp_c);
+    const mkt = calculateMKT(temps);
+    const vhi = calculateVibrationHealthIndex(readings);
+    const nightGap = analyzeNightGap(readings);
+    const excursions = await detectExcursions(readings, device_id);
+
+    let complianceStatus = 'compliant';
+    if (mkt && mkt.interpretation === 'FAIL') complianceStatus = 'non_compliant';
+    else if (mkt && mkt.interpretation === 'MARGINAL') complianceStatus = 'warning';
+
+    const reportData = {
+        device_id,
+        period,
+        readingCount: readings.length,
+        mkt,
+        vhi,
+        nightGap,
+        excursions: excursions.map(e => ({
+            id: e.id || `exc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            startTime: e.start_time,
+            endTime: e.end_time || new Date(new Date(e.start_time).getTime() + (e.duration_minutes || 15) * 60000).toISOString(),
+            duration: e.duration_minutes || 15,
+            peakTemp: e.peak_temp_c,
+            severity: e.severity || 'minor',
+            aiDiagnosis: e.ai_diagnosis || 'Door-open event detected. Temperature recovered within expected timeframe.'
+        })),
+        complianceStatus,
+        generatedAt: new Date().toISOString(),
+        temperatureData: readings.slice(0, 200).map(r => ({
+            timestamp: r.timestamp,
+            temp: parseFloat(r.temp_c) || r.temp_c
+        }))
+    };
+
+    const summaries = await generateReportSummaries(reportData, device_id);
+    reportData.executiveSummary = summaries.executiveSummary;
+    reportData.engineerBrief = summaries.engineerBrief;
+
+    reportData.auditHash = crypto.createHash('sha256')
+        .update(JSON.stringify(reportData))
+        .digest('hex')
+        .substring(0, 16);
+
+    res.json(reportData);
+});
+
+// Puppeteer PDF generation function
+async function generatePuppeteerPDF(deviceId, month, year) {
+    const browser = await puppeteer.launch({
+        headless: 'new',
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+
+    try {
+        const page = await browser.newPage();
+
+        // Set a larger viewport for better rendering
+        await page.setViewport({ width: 794, height: 1123 }); // A4 at 96dpi
+
+        const dashboardPort = process.env.DASHBOARD_PORT || 4001;
+        const url = `http://localhost:${dashboardPort}/reports/render/guardian-ledger/${deviceId}?month=${month}&year=${year}`;
+
+        console.log(`📄 Navigating to: ${url}`);
+
+        await page.goto(url, {
+            waitUntil: 'networkidle0',
+            timeout: 60000
+        });
+
+        // Wait for the report to be ready
+        await page.waitForSelector('[data-report-ready="true"]', { timeout: 30000 });
+
+        // Give charts a moment to render
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        const pdf = await page.pdf({
+            format: 'A4',
+            printBackground: true,
+            margin: {
+                top: '15mm',
+                right: '15mm',
+                bottom: '15mm',
+                left: '15mm'
+            },
+            preferCSSPageSize: true
+        });
+
+        console.log(`✅ PDF generated successfully (${pdf.length} bytes)`);
+        return pdf;
+    } finally {
+        await browser.close();
+    }
+}
+
+// API: Generate PDF on-demand using Puppeteer
 app.post('/api/home-freezer/reports/pdf', async (req, res) => {
-    const { device_id, month, year } = req.body;
+    const { device_id, month, year, format = 'both' } = req.body;
 
     if (!device_id) {
         return res.status(400).json({ error: 'device_id is required' });
@@ -2324,10 +2467,107 @@ app.post('/api/home-freezer/reports/pdf', async (req, res) => {
         .digest('hex')
         .substring(0, 16);
 
-    generateGuardianLedgerPDF(res, reportData);
+    // Generate CSV data from readings
+    const csvHeaders = [
+        'timestamp',
+        'device_id',
+        'temp_c',
+        'accel_x',
+        'accel_y',
+        'accel_z',
+        'accel_magnitude',
+        'battery_percent',
+        'wifi_rssi'
+    ].join(',');
+
+    const csvRows = readings.map(r => [
+        r.timestamp,
+        r.device_id || device_id,
+        r.temp_c,
+        r.accel_x || '',
+        r.accel_y || '',
+        r.accel_z || '',
+        r.accel_magnitude || '',
+        r.battery_percent || '',
+        r.wifi_rssi || ''
+    ].join(','));
+
+    const csvContent = [csvHeaders, ...csvRows].join('\n');
+
+    // Handle format selection
+    try {
+        if (format === 'csv') {
+            // CSV only
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', `attachment; filename="sensor-data-${device_id}-${period}.csv"`);
+            return res.send(csvContent);
+        }
+
+        // Generate PDF (needed for 'pdf' or 'both' formats)
+        const pdf = await generatePuppeteerPDF(device_id, targetMonth, targetYear);
+        const pdfBuffer = Buffer.isBuffer(pdf) ? pdf : Buffer.from(pdf);
+
+        if (format === 'pdf') {
+            // PDF only
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename="guardian-ledger-${device_id}-${period}.pdf"`);
+            return res.send(pdfBuffer);
+        }
+
+        // Both (ZIP)
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', `attachment; filename="guardian-ledger-${device_id}-${period}.zip"`);
+
+        const archive = archiver('zip', { zlib: { level: 9 } });
+
+        archive.on('error', (err) => {
+            console.error('Archive error:', err);
+            res.status(500).json({ error: 'Failed to create archive' });
+        });
+
+        archive.pipe(res);
+
+        // Add PDF to archive
+        archive.append(pdfBuffer, { name: `guardian-ledger-${device_id}-${period}.pdf` });
+
+        // Add CSV to archive
+        archive.append(csvContent, { name: `sensor-data-${device_id}-${period}.csv` });
+
+        // Add a summary JSON file
+        const summaryJson = JSON.stringify({
+            reportInfo: {
+                deviceId: device_id,
+                period: period,
+                generatedAt: reportData.generatedAt,
+                auditHash: reportData.auditHash
+            },
+            metrics: {
+                mkt: reportData.mkt,
+                vibrationHealthIndex: reportData.vhi,
+                nightGapAnalysis: reportData.nightGap,
+                complianceStatus: reportData.complianceStatus
+            },
+            excursions: reportData.excursions,
+            dataStats: {
+                totalReadings: readings.length,
+                startDate: startDate.toISOString(),
+                endDate: endDate.toISOString()
+            }
+        }, null, 2);
+
+        archive.append(summaryJson, { name: `report-summary-${device_id}-${period}.json` });
+
+        await archive.finalize();
+
+    } catch (error) {
+        console.error('Puppeteer PDF generation failed:', error);
+        // Fallback to PDFKit-based generation (PDF only, no ZIP)
+        console.log('Falling back to PDFKit...');
+        generateGuardianLedgerPDF(res, reportData);
+    }
 });
 
-// PDF Generation function for Guardian Ledger reports
+// Legacy PDF Generation function for Guardian Ledger reports (PDFKit fallback)
 function generateGuardianLedgerPDF(res, reportData) {
     const timestamp = new Date().toISOString().split('T')[0];
     res.setHeader('Content-Type', 'application/pdf');
@@ -3805,6 +4045,775 @@ app.get('/api/fleet/export/pdf', (req, res) => {
     doc.text(`Report generated at ${new Date().toISOString()}`, { align: 'center' });
 
     doc.end();
+});
+
+// ==================== FLEET GUARDIAN LEDGER ENDPOINTS ====================
+
+// Get monthly fleet data for a specific device
+app.get('/api/fleet/:device/monthly', async (req, res) => {
+    const { device } = req.params;
+    const { month, year } = req.query;
+
+    const targetMonth = parseInt(month) || new Date().getMonth() + 1;
+    const targetYear = parseInt(year) || new Date().getFullYear();
+    const period = `${targetYear}-${String(targetMonth).padStart(2, '0')}`;
+
+    const startDate = new Date(targetYear, targetMonth - 1, 1);
+    const endDate = new Date(targetYear, targetMonth, 0, 23, 59, 59);
+
+    if (!supabase) {
+        return res.status(503).json({ error: 'Database not configured' });
+    }
+
+    try {
+        const { data: readings, error } = await supabase
+            .from('readings')
+            .select('*')
+            .eq('device_id', device)
+            .gte('timestamp', startDate.toISOString())
+            .lte('timestamp', endDate.toISOString())
+            .order('timestamp', { ascending: true });
+
+        if (error) throw error;
+
+        if (!readings || readings.length === 0) {
+            return res.status(404).json({ error: 'No data found for the specified period' });
+        }
+
+        const temps = readings.map(r => parseFloat(r.temp_cabinet));
+        const mkt = calculateMKT(temps);
+
+        // Calculate fleet-specific metrics
+        const avgPower = readings.reduce((sum, r) => sum + (parseFloat(r.compressor_power_w) || 0), 0) / readings.length;
+        const avgCOP = readings.reduce((sum, r) => sum + (parseFloat(r.cop) || 0), 0) / readings.length;
+        const doorOpenEvents = readings.filter(r => r.door_open).length;
+        const faultEvents = readings.filter(r => r.fault && r.fault !== 'NORMAL');
+        const defrostCycles = readings.filter(r => r.defrost_on).length;
+
+        // Efficiency score (0-100)
+        let efficiencyScore = 100;
+        if (avgCOP < 1.5) efficiencyScore -= 20;
+        else if (avgCOP < 2.0) efficiencyScore -= 10;
+        if (avgPower > 800) efficiencyScore -= 15;
+        else if (avgPower > 600) efficiencyScore -= 5;
+        if (doorOpenEvents > readings.length * 0.05) efficiencyScore -= 10;
+        if (faultEvents.length > 0) efficiencyScore -= (faultEvents.length * 5);
+        efficiencyScore = Math.max(0, Math.min(100, efficiencyScore));
+
+        // Excursions
+        const excursions = [];
+        let currentExcursion = null;
+        readings.forEach(r => {
+            const temp = parseFloat(r.temp_cabinet);
+            if (temp > -10 && !currentExcursion) {
+                currentExcursion = { start_time: r.timestamp, peak_temp_c: temp, type: r.door_open ? 'door_open' : 'high_temp' };
+            } else if (temp > -10 && currentExcursion) {
+                if (temp > currentExcursion.peak_temp_c) currentExcursion.peak_temp_c = temp;
+            } else if (temp <= -10 && currentExcursion) {
+                currentExcursion.end_time = r.timestamp;
+                currentExcursion.duration_minutes = Math.round((new Date(currentExcursion.end_time) - new Date(currentExcursion.start_time)) / 60000);
+                currentExcursion.severity = currentExcursion.duration_minutes > 60 ? 'critical' : currentExcursion.duration_minutes > 15 ? 'moderate' : 'minor';
+                excursions.push(currentExcursion);
+                currentExcursion = null;
+            }
+        });
+
+        res.json({
+            device,
+            period,
+            readingCount: readings.length,
+            mkt,
+            efficiency: {
+                score: efficiencyScore,
+                avgPower: parseFloat(avgPower.toFixed(1)),
+                avgCOP: parseFloat(avgCOP.toFixed(2)),
+                interpretation: efficiencyScore >= 85 ? 'Excellent' : efficiencyScore >= 70 ? 'Good' : efficiencyScore >= 50 ? 'Fair' : 'Poor'
+            },
+            operations: {
+                doorOpenEvents,
+                faultEvents: faultEvents.length,
+                defrostCycles,
+                faults: [...new Set(faultEvents.map(f => f.fault))]
+            },
+            excursions,
+            source: 'supabase'
+        });
+    } catch (error) {
+        console.error("Fleet monthly query error:", error);
+        res.status(500).json({ error: 'Failed to fetch monthly data' });
+    }
+});
+
+// Generate fleet audit report
+app.post('/api/fleet/reports/generate', async (req, res) => {
+    const { device_id, month, year } = req.body;
+
+    if (!device_id) {
+        return res.status(400).json({ error: 'device_id is required' });
+    }
+
+    const targetMonth = parseInt(month) || new Date().getMonth() + 1;
+    const targetYear = parseInt(year) || new Date().getFullYear();
+    const period = `${targetYear}-${String(targetMonth).padStart(2, '0')}`;
+
+    const startDate = new Date(targetYear, targetMonth - 1, 1);
+    const endDate = new Date(targetYear, targetMonth, 0, 23, 59, 59);
+
+    if (!supabase) {
+        return res.status(503).json({ error: 'Database not configured' });
+    }
+
+    try {
+        // Fetch readings
+        const { data: readings, error } = await supabase
+            .from('readings')
+            .select('*')
+            .eq('device_id', device_id)
+            .gte('timestamp', startDate.toISOString())
+            .lte('timestamp', endDate.toISOString())
+            .order('timestamp', { ascending: true });
+
+        if (error) throw error;
+        if (!readings || readings.length === 0) {
+            return res.status(404).json({ error: 'No data found for the specified period' });
+        }
+
+        // Get device info
+        const { data: deviceInfo } = await supabase
+            .from('devices')
+            .select('*, locations(name, address)')
+            .eq('device_id', device_id)
+            .single();
+
+        // Calculate metrics
+        const temps = readings.map(r => parseFloat(r.temp_cabinet));
+        const mkt = calculateMKT(temps);
+
+        const avgPower = readings.reduce((sum, r) => sum + (parseFloat(r.compressor_power_w) || 0), 0) / readings.length;
+        const avgCOP = readings.reduce((sum, r) => sum + (parseFloat(r.cop) || 0), 0) / readings.length;
+        const doorOpenEvents = readings.filter(r => r.door_open).length;
+        const faultEvents = readings.filter(r => r.fault && r.fault !== 'NORMAL');
+
+        let efficiencyScore = 100;
+        if (avgCOP < 1.5) efficiencyScore -= 20;
+        if (avgPower > 800) efficiencyScore -= 15;
+        if (doorOpenEvents > readings.length * 0.05) efficiencyScore -= 10;
+        if (faultEvents.length > 0) efficiencyScore -= (faultEvents.length * 5);
+        efficiencyScore = Math.max(0, Math.min(100, efficiencyScore));
+
+        let complianceStatus = 'compliant';
+        if (mkt && mkt.interpretation === 'FAIL') complianceStatus = 'non_compliant';
+        else if (faultEvents.length > 0 || efficiencyScore < 70) complianceStatus = 'warning';
+
+        const reportData = {
+            device_id,
+            location: deviceInfo?.locations?.name || 'Unknown',
+            address: deviceInfo?.locations?.address || '',
+            period,
+            readingCount: readings.length,
+            mkt,
+            efficiency: { score: efficiencyScore, avgPower, avgCOP },
+            doorOpenEvents,
+            faultEvents: faultEvents.length,
+            faults: [...new Set(faultEvents.map(f => f.fault))],
+            complianceStatus,
+            generatedAt: new Date().toISOString()
+        };
+
+        // Generate AI summaries
+        if (ai) {
+            try {
+                const summaryPrompt = `Generate a brief (2-3 sentences) executive summary for a commercial freezer compliance report.
+Device: ${device_id} at ${reportData.location}
+Period: ${period}
+MKT: ${mkt?.mkt}°C (${mkt?.interpretation})
+Efficiency Score: ${efficiencyScore}/100
+Faults: ${faultEvents.length}
+Door Events: ${doorOpenEvents}
+Compliance: ${complianceStatus}`;
+
+                const result = await ai.models.generateContent({ model: GEMINI_MODEL, contents: summaryPrompt });
+                reportData.executiveSummary = result.text;
+            } catch (e) {
+                reportData.executiveSummary = 'AI summary unavailable.';
+            }
+        }
+
+        // Generate audit hash
+        reportData.auditHash = crypto.createHash('sha256')
+            .update(JSON.stringify(reportData))
+            .digest('hex')
+            .substring(0, 16);
+
+        // Store in database
+        await supabase.from('monthly_reports').insert({
+            device_id,
+            report_month: startDate.toISOString().split('T')[0],
+            mkt_celsius: mkt?.mkt,
+            vibration_health_index: efficiencyScore,
+            compliance_status: complianceStatus,
+            ai_executive_summary: reportData.executiveSummary,
+            report_data: reportData,
+            audit_hash: reportData.auditHash
+        });
+
+        res.json(reportData);
+    } catch (error) {
+        console.error("Fleet report generation error:", error);
+        res.status(500).json({ error: 'Failed to generate report' });
+    }
+});
+
+// Get fleet report history
+app.get('/api/fleet/reports/history', async (req, res) => {
+    const { device_id, limit = 10 } = req.query;
+
+    if (!supabase) {
+        return res.json({ reports: [], message: 'Database not configured' });
+    }
+
+    try {
+        let query = supabase
+            .from('monthly_reports')
+            .select('id, device_id, report_month, mkt_celsius, vibration_health_index, compliance_status, generated_at, audit_hash')
+            .order('report_month', { ascending: false })
+            .limit(parseInt(limit));
+
+        if (device_id) {
+            query = query.eq('device_id', device_id);
+        }
+
+        // Filter to fleet devices only (FREEZER_*)
+        query = query.like('device_id', 'FREEZER_%');
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        res.json({ reports: data || [] });
+    } catch (error) {
+        console.error("Fleet report history error:", error);
+        res.status(500).json({ error: 'Failed to fetch report history' });
+    }
+});
+
+// API: Get fleet report data as JSON for Puppeteer rendering
+app.get('/api/fleet/reports/data', async (req, res) => {
+    const { device_id, month, year } = req.query;
+
+    if (!device_id) {
+        return res.status(400).json({ error: 'device_id is required' });
+    }
+
+    const targetMonth = parseInt(month) || new Date().getMonth() + 1;
+    const targetYear = parseInt(year) || new Date().getFullYear();
+    const period = `${targetYear}-${String(targetMonth).padStart(2, '0')}`;
+
+    const startDate = new Date(targetYear, targetMonth - 1, 1);
+    const endDate = new Date(targetYear, targetMonth, 0, 23, 59, 59);
+
+    if (!supabase) {
+        return res.status(503).json({ error: 'Database not configured' });
+    }
+
+    try {
+        const { data: readings, error } = await supabase
+            .from('readings')
+            .select('*')
+            .eq('device_id', device_id)
+            .gte('timestamp', startDate.toISOString())
+            .lte('timestamp', endDate.toISOString())
+            .order('timestamp', { ascending: true });
+
+        if (error) throw error;
+        if (!readings || readings.length === 0) {
+            return res.status(404).json({ error: 'No data found for the specified period' });
+        }
+
+        const { data: deviceInfo } = await supabase
+            .from('devices')
+            .select('*, locations(name, address)')
+            .eq('device_id', device_id)
+            .single();
+
+        const temps = readings.map(r => parseFloat(r.temp_cabinet));
+        const mkt = calculateMKT(temps);
+
+        const avgPower = readings.reduce((sum, r) => sum + (parseFloat(r.compressor_power_w) || 0), 0) / readings.length;
+        const avgCOP = readings.reduce((sum, r) => sum + (parseFloat(r.cop) || 0), 0) / readings.length;
+        const doorOpenEvents = readings.filter(r => r.door_open).length;
+        const faultReadings = readings.filter(r => r.fault && r.fault !== 'NORMAL');
+        const totalPower = readings.reduce((sum, r) => sum + (parseFloat(r.compressor_power_w) || 0), 0);
+
+        let efficiencyScore = 100;
+        if (avgCOP < 1.5) efficiencyScore -= 20;
+        if (avgPower > 800) efficiencyScore -= 15;
+        if (faultReadings.length > 0) efficiencyScore -= (faultReadings.length * 5);
+        efficiencyScore = Math.max(0, Math.min(100, efficiencyScore));
+
+        let complianceStatus = 'compliant';
+        if (mkt && mkt.interpretation === 'FAIL') complianceStatus = 'non_compliant';
+        else if (faultReadings.length > 0) complianceStatus = 'warning';
+
+        const auditHash = crypto.createHash('sha256')
+            .update(JSON.stringify({ device_id, period, mkt, efficiencyScore }))
+            .digest('hex')
+            .substring(0, 16);
+
+        // Generate AI summary
+        let aiSummary = `This fleet unit maintained an average temperature of ${mkt?.mkt || 'N/A'}°C with ${efficiencyScore}% operational efficiency. `;
+        if (faultReadings.length === 0) {
+            aiSummary += 'No faults were detected during the reporting period. ';
+        } else {
+            aiSummary += `${faultReadings.length} fault events were recorded and should be investigated. `;
+        }
+        aiSummary += `Energy consumption averaged ${avgPower.toFixed(0)}W with a COP of ${avgCOP.toFixed(2)}.`;
+
+        const reportData = {
+            device_id,
+            period,
+            locationName: deviceInfo?.locations?.name || 'Unknown Location',
+            locationAddress: deviceInfo?.locations?.address || null,
+            readingCount: readings.length,
+            mkt,
+            efficiency: {
+                score: efficiencyScore,
+                avgPower,
+                avgCOP,
+                totalEnergy: totalPower / 1000
+            },
+            doorOpenEvents,
+            faults: faultReadings.map(r => ({
+                timestamp: r.timestamp,
+                fault: r.fault,
+                faultId: r.fault_id
+            })),
+            complianceStatus,
+            generatedAt: new Date().toISOString(),
+            auditHash,
+            aiSummary,
+            temperatureData: readings.slice(0, 200).map(r => ({
+                timestamp: r.timestamp,
+                temp: parseFloat(r.temp_cabinet)
+            })),
+            powerData: readings.slice(0, 200).map(r => ({
+                timestamp: r.timestamp,
+                power: parseFloat(r.compressor_power_w) || 0,
+                cop: parseFloat(r.cop) || 0
+            }))
+        };
+
+        res.json(reportData);
+
+    } catch (error) {
+        console.error("Fleet report data error:", error);
+        res.status(500).json({ error: 'Failed to generate report data' });
+    }
+});
+
+// Puppeteer PDF generation function for fleet reports
+async function generateFleetPuppeteerPDF(deviceId, month, year) {
+    const browser = await puppeteer.launch({
+        headless: 'new',
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+
+    try {
+        const page = await browser.newPage();
+        await page.setViewport({ width: 794, height: 1123 });
+
+        const dashboardPort = process.env.DASHBOARD_PORT || 4001;
+        const url = `http://localhost:${dashboardPort}/reports/render/fleet-report/${deviceId}?month=${month}&year=${year}`;
+
+        console.log(`📄 Navigating to fleet report: ${url}`);
+
+        await page.goto(url, {
+            waitUntil: 'networkidle0',
+            timeout: 60000
+        });
+
+        await page.waitForSelector('[data-report-ready="true"]', { timeout: 30000 });
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        const pdf = await page.pdf({
+            format: 'A4',
+            printBackground: true,
+            margin: { top: '15mm', right: '15mm', bottom: '15mm', left: '15mm' },
+            preferCSSPageSize: true
+        });
+
+        console.log(`✅ Fleet PDF generated successfully (${pdf.length} bytes)`);
+        return pdf;
+    } finally {
+        await browser.close();
+    }
+}
+
+// Generate fleet infographic PDF using Puppeteer
+async function generateFleetInfographicPDF(deviceId, month, year) {
+    const browser = await puppeteer.launch({
+        headless: 'new',
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+
+    try {
+        const page = await browser.newPage();
+        await page.setViewport({ width: 794, height: 1123 });
+
+        // Capture console errors from the page
+        page.on('console', msg => {
+            if (msg.type() === 'error') {
+                console.log(`🔴 Page console error: ${msg.text()}`);
+            }
+        });
+        page.on('pageerror', err => {
+            console.log(`🔴 Page error: ${err.message}`);
+        });
+
+        const dashboardPort = process.env.DASHBOARD_PORT || 4001;
+        const url = `http://localhost:${dashboardPort}/reports/render/fleet-infographic/${deviceId}?month=${month}&year=${year}`;
+
+        console.log(`📊 Navigating to fleet infographic: ${url}`);
+
+        await page.goto(url, {
+            waitUntil: 'networkidle0',
+            timeout: 60000
+        });
+
+        // Wait for the infographic to be ready (data loaded and rendered)
+        await page.waitForSelector('[data-infographic-ready="true"]', { timeout: 45000 });
+
+        // Check if it's an error page
+        const hasError = await page.$('[data-infographic-error="true"]');
+        if (hasError) {
+            throw new Error(`Infographic render failed for device ${deviceId}`);
+        }
+
+        // Give extra time for Recharts to fully render
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        const pdf = await page.pdf({
+            format: 'A4',
+            printBackground: true,
+            margin: { top: '0mm', right: '0mm', bottom: '0mm', left: '0mm' },
+            preferCSSPageSize: true
+        });
+
+        console.log(`✅ Fleet infographic generated successfully (${pdf.length} bytes)`);
+        return pdf;
+    } finally {
+        await browser.close();
+    }
+}
+
+// Generate reports for ALL fleet devices
+async function generateAllFleetReports(req, res, targetMonth, targetYear, period, startDate, endDate, format) {
+    if (!supabase) {
+        return res.status(503).json({ error: 'Database not configured' });
+    }
+
+    try {
+        // Get all fleet devices
+        const { data: devices, error: devicesError } = await supabase
+            .from('devices')
+            .select('device_id, locations(name)')
+            .order('device_id');
+
+        if (devicesError) throw devicesError;
+        if (!devices || devices.length === 0) {
+            return res.status(404).json({ error: 'No devices found' });
+        }
+
+        console.log(`📦 Generating reports for ${devices.length} fleet devices...`);
+
+        // Create ZIP archive
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', `attachment; filename="fleet-reports-all-${period}.zip"`);
+
+        const archive = archiver('zip', { zlib: { level: 9 } });
+
+        archive.on('error', (err) => {
+            console.error('Archive error:', err);
+            res.status(500).json({ error: 'Failed to create archive' });
+        });
+
+        archive.pipe(res);
+
+        // Process each device
+        for (const device of devices) {
+            const deviceId = device.device_id;
+            console.log(`  Processing ${deviceId}...`);
+
+            try {
+                // Get readings for this device
+                const { data: readings, error } = await supabase
+                    .from('readings')
+                    .select('*')
+                    .eq('device_id', deviceId)
+                    .gte('timestamp', startDate.toISOString())
+                    .lte('timestamp', endDate.toISOString())
+                    .order('timestamp', { ascending: true });
+
+                if (error || !readings || readings.length === 0) {
+                    console.log(`    Skipping ${deviceId} - no data`);
+                    continue;
+                }
+
+                // Generate CSV
+                if (format === 'csv' || format === 'both') {
+                    const csvHeaders = [
+                        'timestamp', 'device_id', 'temp_cabinet', 'temp_ambient',
+                        'compressor_power_w', 'compressor_freq_hz', 'frost_level',
+                        'cop', 'door_open', 'defrost_on', 'fault'
+                    ].join(',');
+
+                    const csvRows = readings.map(r => [
+                        r.timestamp, r.device_id || deviceId, r.temp_cabinet,
+                        r.temp_ambient || '', r.compressor_power_w || '',
+                        r.compressor_freq_hz || '', r.frost_level || '',
+                        r.cop || '', r.door_open ? 'true' : 'false',
+                        r.defrost_on ? 'true' : 'false', r.fault || 'NORMAL'
+                    ].join(','));
+
+                    const csvContent = [csvHeaders, ...csvRows].join('\n');
+                    archive.append(csvContent, { name: `${deviceId}/fleet-data-${deviceId}-${period}.csv` });
+                }
+
+                // Generate PDF
+                if (format === 'pdf' || format === 'both') {
+                    try {
+                        const pdf = await generateFleetPuppeteerPDF(deviceId, targetMonth, targetYear);
+                        const pdfBuffer = Buffer.isBuffer(pdf) ? pdf : Buffer.from(pdf);
+                        archive.append(pdfBuffer, { name: `${deviceId}/fleet-report-${deviceId}-${period}.pdf` });
+                    } catch (pdfErr) {
+                        console.error(`    Failed to generate PDF for ${deviceId}:`, pdfErr.message);
+                    }
+                }
+
+                console.log(`    ✅ ${deviceId} complete`);
+            } catch (deviceError) {
+                console.error(`    Failed to process ${deviceId}:`, deviceError.message);
+            }
+        }
+
+        await archive.finalize();
+        console.log(`📦 All fleet reports generated successfully`);
+
+    } catch (error) {
+        console.error("All fleet reports generation error:", error);
+        res.status(500).json({ error: 'Failed to generate reports for all devices' });
+    }
+}
+
+// Generate fleet PDF report on-demand using Puppeteer
+app.post('/api/fleet/reports/pdf', async (req, res) => {
+    const { device_id, month, year, format = 'both' } = req.body;
+
+    if (!device_id) {
+        return res.status(400).json({ error: 'device_id is required' });
+    }
+
+    const targetMonth = parseInt(month) || new Date().getMonth() + 1;
+    const targetYear = parseInt(year) || new Date().getFullYear();
+    const period = `${targetYear}-${String(targetMonth).padStart(2, '0')}`;
+
+    const startDate = new Date(targetYear, targetMonth - 1, 1);
+    const endDate = new Date(targetYear, targetMonth, 0, 23, 59, 59);
+
+    // Handle "all" devices
+    if (device_id === 'all') {
+        return generateAllFleetReports(req, res, targetMonth, targetYear, period, startDate, endDate, format);
+    }
+
+    if (!supabase) {
+        return res.status(503).json({ error: 'Database not configured' });
+    }
+
+    try {
+        const { data: readings, error } = await supabase
+            .from('readings')
+            .select('*')
+            .eq('device_id', device_id)
+            .gte('timestamp', startDate.toISOString())
+            .lte('timestamp', endDate.toISOString())
+            .order('timestamp', { ascending: true });
+
+        if (error) throw error;
+        if (!readings || readings.length === 0) {
+            return res.status(404).json({ error: 'No data found for the specified period' });
+        }
+
+        const { data: deviceInfo } = await supabase
+            .from('devices')
+            .select('*, locations(name, address)')
+            .eq('device_id', device_id)
+            .single();
+
+        const temps = readings.map(r => parseFloat(r.temp_cabinet));
+        const mkt = calculateMKT(temps);
+
+        const avgPower = readings.reduce((sum, r) => sum + (parseFloat(r.compressor_power_w) || 0), 0) / readings.length;
+        const avgCOP = readings.reduce((sum, r) => sum + (parseFloat(r.cop) || 0), 0) / readings.length;
+        const doorOpenEvents = readings.filter(r => r.door_open).length;
+        const faultEvents = readings.filter(r => r.fault && r.fault !== 'NORMAL');
+        const totalPower = readings.reduce((sum, r) => sum + (parseFloat(r.compressor_power_w) || 0), 0);
+
+        let efficiencyScore = 100;
+        if (avgCOP < 1.5) efficiencyScore -= 20;
+        if (avgPower > 800) efficiencyScore -= 15;
+        if (faultEvents.length > 0) efficiencyScore -= (faultEvents.length * 5);
+        efficiencyScore = Math.max(0, Math.min(100, efficiencyScore));
+
+        const auditHash = crypto.createHash('sha256')
+            .update(JSON.stringify({ device_id, period, mkt, efficiencyScore }))
+            .digest('hex')
+            .substring(0, 16);
+
+        // Generate CSV data from readings
+        const csvHeaders = [
+            'timestamp',
+            'device_id',
+            'temp_cabinet',
+            'temp_ambient',
+            'compressor_power_w',
+            'compressor_freq_hz',
+            'frost_level',
+            'cop',
+            'door_open',
+            'defrost_on',
+            'fault'
+        ].join(',');
+
+        const csvRows = readings.map(r => [
+            r.timestamp,
+            r.device_id || device_id,
+            r.temp_cabinet,
+            r.temp_ambient || '',
+            r.compressor_power_w || '',
+            r.compressor_freq_hz || '',
+            r.frost_level || '',
+            r.cop || '',
+            r.door_open ? 'true' : 'false',
+            r.defrost_on ? 'true' : 'false',
+            r.fault || 'NORMAL'
+        ].join(','));
+
+        const csvContent = [csvHeaders, ...csvRows].join('\n');
+
+        // Handle format selection
+        try {
+            if (format === 'csv') {
+                // CSV only
+                res.setHeader('Content-Type', 'text/csv');
+                res.setHeader('Content-Disposition', `attachment; filename="fleet-data-${device_id}-${period}.csv"`);
+                return res.send(csvContent);
+            }
+
+            // Generate PDF (needed for 'pdf' or 'both' formats)
+            const pdf = await generateFleetPuppeteerPDF(device_id, targetMonth, targetYear);
+            const pdfBuffer = Buffer.isBuffer(pdf) ? pdf : Buffer.from(pdf);
+
+            if (format === 'pdf') {
+                // PDF only
+                res.setHeader('Content-Type', 'application/pdf');
+                res.setHeader('Content-Disposition', `attachment; filename="fleet-report-${device_id}-${period}.pdf"`);
+                return res.send(pdfBuffer);
+            }
+
+            // Both (ZIP)
+            res.setHeader('Content-Type', 'application/zip');
+            res.setHeader('Content-Disposition', `attachment; filename="fleet-report-${device_id}-${period}.zip"`);
+
+            // Generate infographic PDF
+            const infographicPdf = await generateFleetInfographicPDF(device_id, targetMonth, targetYear);
+            const infographicBuffer = Buffer.isBuffer(infographicPdf) ? infographicPdf : Buffer.from(infographicPdf);
+
+            const archive = archiver('zip', { zlib: { level: 9 } });
+
+            archive.on('error', (err) => {
+                console.error('Archive error:', err);
+                res.status(500).json({ error: 'Failed to create archive' });
+            });
+
+            archive.pipe(res);
+
+            // Add PDF to archive
+            archive.append(pdfBuffer, { name: `fleet-report-${device_id}-${period}.pdf` });
+
+            // Add infographic to archive
+            archive.append(infographicBuffer, { name: `fleet-infographic-${device_id}-${period}.pdf` });
+
+            // Add CSV to archive
+            archive.append(csvContent, { name: `fleet-data-${device_id}-${period}.csv` });
+
+            // Add a summary JSON file
+            const summaryJson = JSON.stringify({
+                reportInfo: {
+                    deviceId: device_id,
+                    location: deviceInfo?.locations?.name || 'Unknown',
+                    period: period,
+                    generatedAt: new Date().toISOString(),
+                    auditHash: auditHash
+                },
+                metrics: {
+                    mkt: mkt,
+                    efficiency: {
+                        score: efficiencyScore,
+                        avgPower: avgPower,
+                        avgCOP: avgCOP,
+                        totalEnergy: totalPower / 1000
+                    }
+                },
+                operations: {
+                    doorOpenEvents: doorOpenEvents,
+                    faultEvents: faultEvents.length,
+                    faults: [...new Set(faultEvents.map(f => f.fault))]
+                },
+                dataStats: {
+                    totalReadings: readings.length,
+                    startDate: startDate.toISOString(),
+                    endDate: endDate.toISOString()
+                }
+            }, null, 2);
+
+            archive.append(summaryJson, { name: `report-summary-${device_id}-${period}.json` });
+
+            await archive.finalize();
+
+        } catch (pdfError) {
+            console.error('Puppeteer PDF generation failed:', pdfError);
+            res.status(500).json({ error: 'Failed to generate PDF report' });
+        }
+
+    } catch (error) {
+        console.error("Fleet PDF generation error:", error);
+        res.status(500).json({ error: 'Failed to generate PDF' });
+    }
+});
+
+// Generate fleet infographic only
+app.post('/api/fleet/reports/infographic', async (req, res) => {
+    const { device_id, month, year } = req.body;
+
+    if (!device_id) {
+        return res.status(400).json({ error: 'device_id is required' });
+    }
+
+    const targetMonth = parseInt(month) || new Date().getMonth() + 1;
+    const targetYear = parseInt(year) || new Date().getFullYear();
+    const period = `${targetYear}-${String(targetMonth).padStart(2, '0')}`;
+
+    try {
+        const infographicPdf = await generateFleetInfographicPDF(device_id, targetMonth, targetYear);
+        const pdfBuffer = Buffer.isBuffer(infographicPdf) ? infographicPdf : Buffer.from(infographicPdf);
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="fleet-infographic-${device_id}-${period}.pdf"`);
+        return res.send(pdfBuffer);
+
+    } catch (error) {
+        console.error("Fleet infographic generation error:", error);
+        res.status(500).json({ error: 'Failed to generate infographic' });
+    }
 });
 
 // ==================== FIRMWARE OTA ENDPOINTS ====================

@@ -1,4 +1,5 @@
 require('dotenv').config();
+require('dotenv').config({ path: '.env.local', override: true });
 const express = require('express');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
@@ -4916,6 +4917,378 @@ app.get('/api/firmware/status', (req, res) => {
     }
 
     res.json(status);
+});
+
+// ==================== SEO STUDIO ENDPOINTS ====================
+
+// SEO: Keyword Research - Use Gemini to analyze keyword and estimate metrics
+app.post('/api/seo/keywords/research', async (req, res) => {
+    const { keyword, country = 'us' } = req.body;
+
+    if (!keyword) {
+        return res.status(400).json({ error: 'Keyword is required' });
+    }
+
+    if (!ai) {
+        return res.status(500).json({ error: 'AI not configured - missing Gemini API key' });
+    }
+
+    try {
+        const prompt = `Analyze this keyword for SEO: "${keyword}" (target market: ${country.toUpperCase()})
+
+You are an SEO expert. Analyze this keyword and provide realistic estimates based on your knowledge of search trends, industry data, and common SEO patterns.
+
+Return ONLY valid JSON (no markdown, no explanation):
+{
+  "keyword": "${keyword}",
+  "volume": <estimated monthly search volume as number, e.g. 2400>,
+  "difficulty": <SEO difficulty score 1-100, where 1-20=Easy, 21-40=Moderate, 41-60=Hard, 61-80=Very Hard, 81-100=Super Hard>,
+  "cpc": <estimated cost-per-click in USD, e.g. 2.50>,
+  "searchIntent": "informational|commercial|transactional|navigational",
+  "competitionLevel": "low|medium|high",
+  "analysis": "<brief 1-2 sentence analysis of this keyword's potential>"
+}`;
+
+        const result = await ai.models.generateContent({
+            model: GEMINI_MODEL,
+            contents: prompt
+        });
+
+        let metrics;
+        try {
+            const jsonText = result.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            metrics = JSON.parse(jsonText);
+        } catch (parseError) {
+            metrics = { keyword, volume: 1000, difficulty: 50, cpc: 1.00, raw: result.text };
+        }
+
+        res.json({
+            success: true,
+            keyword,
+            country,
+            metrics
+        });
+    } catch (error) {
+        console.error('SEO keyword research error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// SEO: Get keyword ideas using Gemini
+app.post('/api/seo/keywords/ideas', async (req, res) => {
+    const { keyword, country = 'us', limit = 15 } = req.body;
+
+    if (!keyword) {
+        return res.status(400).json({ error: 'Keyword is required' });
+    }
+
+    if (!ai) {
+        return res.status(500).json({ error: 'AI not configured - missing Gemini API key' });
+    }
+
+    try {
+        const prompt = `Generate SEO keyword ideas for: "${keyword}" (target market: ${country.toUpperCase()})
+
+You are an SEO expert. Generate three lists of related keywords with realistic estimated metrics.
+
+Return ONLY valid JSON (no markdown):
+{
+  "matchingTerms": [
+    {"keyword": "variation of main keyword", "volume": 1200, "difficulty": 35, "cpc": 2.10}
+  ],
+  "relatedTerms": [
+    {"keyword": "semantically related keyword", "volume": 800, "difficulty": 28, "cpc": 1.80}
+  ],
+  "suggestions": [
+    {"keyword": "long-tail suggestion", "volume": 400, "difficulty": 20}
+  ]
+}
+
+Generate ${limit} keywords for matchingTerms (variations containing the main keyword),
+${limit} for relatedTerms (semantically related but different phrasing),
+and 10 for suggestions (long-tail, question-based, or niche variations).
+
+Focus on keywords relevant to cold chain, IoT, temperature monitoring, and B2B industries.`;
+
+        const result = await ai.models.generateContent({
+            model: GEMINI_MODEL,
+            contents: prompt
+        });
+
+        let ideas;
+        try {
+            const jsonText = result.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            ideas = JSON.parse(jsonText);
+        } catch (parseError) {
+            ideas = { matchingTerms: [], relatedTerms: [], suggestions: [] };
+        }
+
+        res.json({
+            success: true,
+            keyword,
+            country,
+            matchingTerms: ideas.matchingTerms || [],
+            relatedTerms: ideas.relatedTerms || [],
+            suggestions: ideas.suggestions || []
+        });
+    } catch (error) {
+        console.error('SEO keyword ideas error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// SEO: Deep Research - Comprehensive keyword and market analysis
+app.post('/api/seo/keywords/deep-research', async (req, res) => {
+    const { keyword, country = 'us', industry = 'cold chain / IoT' } = req.body;
+
+    if (!keyword) {
+        return res.status(400).json({ error: 'Keyword is required' });
+    }
+
+    if (!ai) {
+        return res.status(500).json({ error: 'AI not configured - missing Gemini API key' });
+    }
+
+    try {
+        const prompt = `You are a senior SEO strategist and market researcher. Conduct comprehensive deep research on this keyword: "${keyword}"
+
+Target Market: ${country.toUpperCase()}
+Industry Context: ${industry}
+
+Analyze this keyword thoroughly and provide actionable insights. Return ONLY valid JSON:
+
+{
+  "keywordAnalysis": {
+    "primaryKeyword": "${keyword}",
+    "estimatedMonthlyVolume": <number>,
+    "difficulty": <1-100>,
+    "cpc": <USD number>,
+    "searchIntent": "informational|commercial|transactional|navigational",
+    "buyerJourneyStage": "awareness|consideration|decision",
+    "seasonality": "evergreen|seasonal|trending",
+    "trendDirection": "growing|stable|declining"
+  },
+  "audienceInsights": {
+    "primaryAudience": "<who searches this>",
+    "painPoints": ["<problem 1>", "<problem 2>", "<problem 3>"],
+    "goals": ["<what they want to achieve>"],
+    "objections": ["<common hesitations>"],
+    "decisionFactors": ["<what influences their choice>"]
+  },
+  "competitorLandscape": {
+    "competitionLevel": "low|medium|high|very high",
+    "dominantPlayerTypes": ["<type of companies ranking>"],
+    "contentFormats": ["<what content types rank: guides, tools, comparisons, etc>"],
+    "averageContentLength": <estimated word count of ranking content>,
+    "gaps": ["<opportunities competitors miss>"]
+  },
+  "contentStrategy": {
+    "recommendedAngle": "<unique angle to differentiate>",
+    "contentType": "ultimate guide|how-to|comparison|case study|tool|listicle",
+    "uniqueValueProposition": "<what makes your content stand out>",
+    "keyTopicsTocover": ["<must-cover topic 1>", "<topic 2>", "<topic 3>", "<topic 4>", "<topic 5>"],
+    "questionsToAnswer": ["<question 1>", "<question 2>", "<question 3>", "<question 4>", "<question 5>"],
+    "internalLinkOpportunities": ["<related topic to link>"],
+    "ctaRecommendation": "<best call-to-action for this content>"
+  },
+  "keywordCluster": {
+    "pillarKeyword": "${keyword}",
+    "supportingKeywords": [
+      {"keyword": "<supporting kw 1>", "volume": <num>, "type": "how-to|what-is|comparison|best"},
+      {"keyword": "<supporting kw 2>", "volume": <num>, "type": "how-to|what-is|comparison|best"},
+      {"keyword": "<supporting kw 3>", "volume": <num>, "type": "how-to|what-is|comparison|best"},
+      {"keyword": "<supporting kw 4>", "volume": <num>, "type": "how-to|what-is|comparison|best"},
+      {"keyword": "<supporting kw 5>", "volume": <num>, "type": "how-to|what-is|comparison|best"}
+    ],
+    "longTailVariations": ["<long tail 1>", "<long tail 2>", "<long tail 3>", "<long tail 4>", "<long tail 5>"],
+    "relatedQuestions": ["<PAA question 1>", "<PAA question 2>", "<PAA question 3>", "<PAA question 4>"]
+  },
+  "technicalSEO": {
+    "recommendedTitle": "<60 char SEO title>",
+    "recommendedMetaDescription": "<155 char meta description>",
+    "recommendedURL": "<url-slug-format>",
+    "schemaType": "Article|HowTo|FAQPage|Product",
+    "featuredSnippetOpportunity": "high|medium|low",
+    "featuredSnippetFormat": "paragraph|list|table|none"
+  },
+  "actionPlan": {
+    "priority": "high|medium|low",
+    "estimatedTimeToRank": "<realistic timeframe>",
+    "quickWins": ["<immediate action 1>", "<action 2>"],
+    "longTermPlays": ["<strategic action 1>", "<action 2>"],
+    "contentCalendarSuggestion": "<when/how often to publish related content>"
+  }
+}`;
+
+        const result = await ai.models.generateContent({
+            model: GEMINI_MODEL,
+            contents: prompt
+        });
+
+        let research;
+        try {
+            const jsonText = result.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            research = JSON.parse(jsonText);
+        } catch (parseError) {
+            research = { raw: result.text, parseError: true };
+        }
+
+        res.json({
+            success: true,
+            keyword,
+            country,
+            research
+        });
+    } catch (error) {
+        console.error('SEO deep research error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// SEO: Generate content brief from keyword
+app.post('/api/seo/brief/generate', async (req, res) => {
+    const { keyword, relatedKeywords = [], country = 'us' } = req.body;
+
+    if (!keyword) {
+        return res.status(400).json({ error: 'Keyword is required' });
+    }
+
+    if (!ai) {
+        return res.status(500).json({ error: 'AI not configured - missing Gemini API key' });
+    }
+
+    try {
+        const relatedKwList = relatedKeywords.length > 0
+            ? `\nRelated keywords to consider: ${relatedKeywords.join(', ')}`
+            : '';
+
+        const prompt = `Create a detailed SEO content brief for the keyword: "${keyword}"${relatedKwList}
+
+Generate a comprehensive brief in JSON format with the following structure:
+{
+  "targetKeyword": "${keyword}",
+  "searchIntent": "informational|commercial|transactional|navigational",
+  "suggestedTitle": "SEO-optimized title (50-60 chars)",
+  "metaDescription": "Compelling meta description (150-160 chars)",
+  "targetWordCount": number,
+  "headings": [
+    { "level": "h2", "text": "Heading text", "keywords": ["keywords to include"] }
+  ],
+  "questionsToAnswer": ["People also ask questions"],
+  "keyPointsToCover": ["Main points to address"],
+  "internalLinkingSuggestions": ["Related topics to link to"],
+  "ctaSuggestions": ["Call-to-action ideas"]
+}
+
+Return ONLY valid JSON, no markdown or explanation.`;
+
+        const result = await ai.models.generateContent({
+            model: GEMINI_MODEL,
+            contents: prompt
+        });
+
+        let briefData;
+        try {
+            const jsonText = result.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            briefData = JSON.parse(jsonText);
+        } catch (parseError) {
+            briefData = { raw: result.text };
+        }
+
+        res.json({
+            success: true,
+            keyword,
+            brief: briefData
+        });
+    } catch (error) {
+        console.error('SEO brief generation error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// SEO: Generate full article from keyword
+app.post('/api/seo/article/generate', async (req, res) => {
+    const {
+        keyword,
+        relatedKeywords = [],
+        tone = 'professional',
+        length = 'medium',
+        includeOutline = true
+    } = req.body;
+
+    if (!keyword) {
+        return res.status(400).json({ error: 'Keyword is required' });
+    }
+
+    if (!ai) {
+        return res.status(500).json({ error: 'AI not configured - missing Gemini API key' });
+    }
+
+    try {
+        const wordCounts = {
+            short: '800-1000',
+            medium: '1500-2000',
+            long: '2500-3500'
+        };
+        const targetWords = wordCounts[length] || wordCounts.medium;
+
+        const relatedKwList = relatedKeywords.length > 0
+            ? `\nRelated keywords to naturally incorporate: ${relatedKeywords.join(', ')}`
+            : '';
+
+        const prompt = `Write a comprehensive, SEO-optimized article about: "${keyword}"${relatedKwList}
+
+Requirements:
+- Tone: ${tone}
+- Target length: ${targetWords} words
+- Include a compelling H1 title
+- Use proper heading hierarchy (H2, H3)
+- Write naturally with keywords integrated organically
+- Include an introduction that hooks the reader
+- Add a conclusion with a call-to-action
+- Make it informative and valuable to readers
+
+Format the response as JSON:
+{
+  "title": "The main H1 title",
+  "metaDescription": "SEO meta description (150-160 chars)",
+  "outline": [
+    { "level": 2, "text": "Section heading" }
+  ],
+  "content": "The full article content in markdown format with proper ## and ### headings",
+  "wordCount": approximate_word_count,
+  "keywordsUsed": ["list", "of", "keywords", "used"]
+}
+
+Return ONLY valid JSON, no additional text.`;
+
+        const result = await ai.models.generateContent({
+            model: GEMINI_MODEL,
+            contents: prompt
+        });
+
+        let articleData;
+        try {
+            const jsonText = result.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            articleData = JSON.parse(jsonText);
+        } catch (parseError) {
+            // If parsing fails, structure the raw content
+            articleData = {
+                title: `Article about ${keyword}`,
+                content: result.text,
+                raw: true
+            };
+        }
+
+        res.json({
+            success: true,
+            keyword,
+            article: articleData
+        });
+    } catch (error) {
+        console.error('SEO article generation error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // ==================== DEBUG ENDPOINT ====================

@@ -12,7 +12,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { Settings, Car, Cpu, LayoutGrid } from "lucide-react";
+import { Settings, Car, Cpu, LayoutGrid, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 interface CommandSidebarProps {
@@ -37,6 +37,11 @@ const navItems = [
     title: "Car Dashboard",
     url: "/car",
     icon: Car,
+  },
+  {
+    title: "SEO Studio",
+    url: "/seo",
+    icon: Search,
   },
   {
     title: "Settings",

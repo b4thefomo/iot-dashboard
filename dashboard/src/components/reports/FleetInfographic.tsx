@@ -114,11 +114,14 @@ export function FleetInfographic({
         {/* Header Row - 60px */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/30">
-              <Snowflake className="w-8 h-8 text-white" />
+            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/30">
+              <div className="flex gap-1.5">
+                <div className="w-2 h-3 bg-white rounded-full" />
+                <div className="w-2 h-3 bg-white rounded-full" />
+              </div>
             </div>
             <div>
-              <h1 className="text-2xl font-black text-slate-900 tracking-tight">SUBZERO FLEET</h1>
+              <h1 className="text-2xl font-black text-slate-900 tracking-tight">FLUX IoT</h1>
               <p className="text-sm font-medium text-cyan-600">Compliance Snapshot</p>
             </div>
           </div>
@@ -371,7 +374,7 @@ export function FleetInfographic({
             </div>
             <div className="flex items-center gap-4">
               <span>Generated: {new Date(generatedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
-              <span className="font-medium text-cyan-600">Powered by Subzero Fleet</span>
+              <span className="font-medium text-cyan-600">Powered by Flux IoT</span>
             </div>
           </div>
         </div>

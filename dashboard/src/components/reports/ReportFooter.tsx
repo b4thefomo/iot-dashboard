@@ -178,12 +178,15 @@ export function ReportFooter({
         </div>
         <div className="relative z-10">
           <div className="flex items-center justify-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center shadow-lg">
-              <Snowflake className="w-6 h-6" />
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center shadow-lg">
+              <div className="flex gap-1">
+                <div className="w-1.5 h-2.5 bg-white rounded-full" />
+                <div className="w-1.5 h-2.5 bg-white rounded-full" />
+              </div>
             </div>
             <div className="text-left">
-              <span className="text-2xl font-black tracking-tight">SUBZERO FLEET</span>
-              <p className="text-cyan-300 text-xs font-medium">Compliance Monitoring System</p>
+              <span className="text-2xl font-black tracking-tight">FLUX IoT</span>
+              <p className="text-cyan-300 text-xs font-medium">Cold Chain Monitoring Platform</p>
             </div>
           </div>
           <div className="flex items-center justify-center gap-4 text-xs text-slate-400 mt-3">

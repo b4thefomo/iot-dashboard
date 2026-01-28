@@ -198,7 +198,7 @@ export function UnifiedChat() {
         setInput("Show me the historical trends and patterns for the fleet");
         break;
       case "contact-support":
-        alert("Support: support@subzero-fleet.com | Emergency: 0800-SUBZERO");
+        alert("Support: support@fluxiot.io | Emergency: 0800-FLUX-IOT");
         break;
       case "dispatch-technician":
         setInput("Which units need a technician dispatched and what should they check?");

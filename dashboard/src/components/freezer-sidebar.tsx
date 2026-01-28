@@ -16,7 +16,6 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
-  Snowflake,
   Home,
   Car,
   Cpu,
@@ -25,6 +24,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { FluxLogo } from "@/components/flux-logo";
 
 interface NavItem {
   title: string;
@@ -115,13 +115,11 @@ export function FreezerSidebar({ collapsed = false, onToggleCollapse }: FreezerS
       {/* Logo Section */}
       <div className="p-4 border-b border-slate-700">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-cyan-500 text-white flex-shrink-0">
-            <Snowflake className="h-5 w-5" />
-          </div>
+          <FluxLogo size="md" />
           {!collapsed && (
             <div className="overflow-hidden">
-              <h1 className="font-bold text-white text-lg leading-tight">Subzero</h1>
-              <p className="text-xs text-slate-400">Asset Command</p>
+              <h1 className="font-bold text-white text-lg leading-tight">Flux</h1>
+              <p className="text-xs text-slate-400">IoT Platform</p>
             </div>
           )}
         </div>

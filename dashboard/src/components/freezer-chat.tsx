@@ -23,7 +23,6 @@ import {
   Mail,
   MessageSquare,
   Plus,
-  Snowflake,
   X,
   Trash2,
   FileText,
@@ -33,6 +32,7 @@ import {
   ClipboardList,
 } from "lucide-react";
 import { Markdown } from "@/components/ui/markdown";
+import { FluxLogo } from "@/components/flux-logo";
 
 interface Message {
   role: "user" | "assistant";
@@ -47,7 +47,7 @@ interface SavedChat {
   savedAt: string;
 }
 
-const SAVED_CHATS_KEY = "subzero-saved-chats";
+const SAVED_CHATS_KEY = "flux-iot-saved-chats";
 
 // Group chats by date
 function groupChatsByDate(chats: SavedChat[]): Record<string, SavedChat[]> {
@@ -182,7 +182,7 @@ export function FreezerChat({ fleetStatus }: FreezerChatProps) {
   const downloadAsReport = () => {
     if (messages.length === 0) return;
     const timestamp = new Date().toLocaleString();
-    let reportContent = `SUBZERO FLEET COMMAND - AI ANALYSIS REPORT\n`;
+    let reportContent = `FLUX IOT - AI ANALYSIS REPORT\n`;
     reportContent += `Generated: ${timestamp}\n`;
     reportContent += `${"=".repeat(50)}\n\n`;
     messages.forEach((msg) => {
@@ -394,14 +394,8 @@ export function FreezerChat({ fleetStatus }: FreezerChatProps) {
             {messages.length === 0 ? (
               <div className="text-center py-16">
                 {/* AI Avatar */}
-                <div className="relative w-16 h-16 mx-auto mb-4">
-                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/40 animate-pulse">
-                    <div className="flex gap-2">
-                      <div className="w-2.5 h-4 bg-white rounded-full" />
-                      <div className="w-2.5 h-4 bg-white rounded-full" />
-                    </div>
-                  </div>
-                  <div className="absolute inset-0 rounded-full bg-blue-400 animate-ping opacity-20" />
+                <div className="flex justify-center mb-4">
+                  <FluxLogo size="xl" animate />
                 </div>
                 <h4 className="text-lg font-medium text-slate-700 mb-2">
                   How can I help you today?
@@ -427,13 +421,8 @@ export function FreezerChat({ fleetStatus }: FreezerChatProps) {
                 <div key={index} className="flex gap-3">
                   {message.role === "assistant" ? (
                     <>
-                      <div className="relative flex-shrink-0">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shadow-md shadow-blue-500/30">
-                          <div className="flex gap-1">
-                            <div className="w-1.5 h-2 bg-white rounded-full" />
-                            <div className="w-1.5 h-2 bg-white rounded-full" />
-                          </div>
-                        </div>
+                      <div className="flex-shrink-0">
+                        <FluxLogo size="md" />
                       </div>
                       <div className="flex-1 min-w-0">
                         {/* Tool execution indicator */}
@@ -510,14 +499,8 @@ export function FreezerChat({ fleetStatus }: FreezerChatProps) {
             )}
             {isLoading && (
               <div className="flex gap-3">
-                <div className="relative flex-shrink-0">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shadow-md shadow-blue-500/30 animate-pulse">
-                    <div className="flex gap-1">
-                      <div className="w-1.5 h-2 bg-white rounded-full" />
-                      <div className="w-1.5 h-2 bg-white rounded-full" />
-                    </div>
-                  </div>
-                  <div className="absolute inset-0 rounded-full bg-blue-400 animate-ping opacity-20" />
+                <div className="flex-shrink-0">
+                  <FluxLogo size="md" animate />
                 </div>
                 <div className="bg-slate-50 rounded-2xl rounded-tl-none px-4 py-3 border-l-4 border-cyan-400">
                   <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
@@ -585,7 +568,7 @@ export function FreezerChat({ fleetStatus }: FreezerChatProps) {
               <div className="bg-slate-50 rounded-lg p-3 border">
                 <p className="text-xs text-slate-500 mb-1">Preview</p>
                 <p className="text-sm font-medium text-slate-700">
-                  Subzero Fleet Analysis Report
+                  Flux IoT Analysis Report
                 </p>
                 <p className="text-xs text-slate-500 mt-1">
                   {messages.length} messages · Generated {new Date().toLocaleDateString()}
@@ -637,14 +620,8 @@ export function FreezerChat({ fleetStatus }: FreezerChatProps) {
             {messages.length === 0 ? (
               <div className="text-center py-8">
                 {/* AI Avatar */}
-                <div className="relative w-10 h-10 mx-auto mb-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/40 animate-pulse">
-                    <div className="flex gap-1">
-                      <div className="w-1.5 h-2.5 bg-white rounded-full" />
-                      <div className="w-1.5 h-2.5 bg-white rounded-full" />
-                    </div>
-                  </div>
-                  <div className="absolute inset-0 rounded-full bg-blue-400 animate-ping opacity-20" />
+                <div className="flex justify-center mb-3">
+                  <FluxLogo size="lg" animate />
                 </div>
                 <p className="text-sm text-slate-500 mb-4">
                   Ask me about your fleet
@@ -665,12 +642,7 @@ export function FreezerChat({ fleetStatus }: FreezerChatProps) {
                     className={`flex gap-2 ${message.role === "user" ? "justify-end" : "justify-start"}`}
                   >
                     {message.role === "assistant" && (
-                      <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center flex-shrink-0 shadow-sm shadow-blue-500/30">
-                        <div className="flex gap-0.5">
-                          <div className="w-1 h-1.5 bg-white rounded-full" />
-                          <div className="w-1 h-1.5 bg-white rounded-full" />
-                        </div>
-                      </div>
+                      <FluxLogo size="sm" />
                     )}
                     <div
                       className={`px-3 py-2 max-w-[85%] text-sm ${
@@ -694,15 +666,7 @@ export function FreezerChat({ fleetStatus }: FreezerChatProps) {
                 ))}
                 {isLoading && (
                   <div className="flex gap-2">
-                    <div className="relative">
-                      <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shadow-sm shadow-blue-500/30 animate-pulse">
-                        <div className="flex gap-0.5">
-                          <div className="w-1 h-1.5 bg-white rounded-full" />
-                          <div className="w-1 h-1.5 bg-white rounded-full" />
-                        </div>
-                      </div>
-                      <div className="absolute inset-0 rounded-full bg-blue-400 animate-ping opacity-20" />
-                    </div>
+                    <FluxLogo size="sm" animate />
                     <div className="bg-slate-50 rounded-xl rounded-tl-none px-3 py-2">
                       <Loader2 className="h-4 w-4 animate-spin" />
                     </div>

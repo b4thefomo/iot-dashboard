@@ -58,10 +58,10 @@ export function FleetCoverPage({
 
         {/* Title */}
         <h1 className="text-7xl font-black text-white mb-2 tracking-tight drop-shadow-lg">
-          SUBZERO
+          FLUX
         </h1>
         <h2 className="text-5xl font-bold text-cyan-300 mb-6 tracking-wide">
-          FLEET
+          IoT
         </h2>
 
         <div className="w-32 h-1.5 bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400 rounded-full mb-8" />
@@ -103,7 +103,7 @@ export function FleetCoverPage({
       {/* Footer */}
       <div className="absolute bottom-8 left-0 right-0 text-center">
         <p className="text-sm text-blue-300/60 font-medium">
-          Powered by Subzero Fleet Command v2.0
+          Powered by Flux IoT Platform v2.0
         </p>
       </div>
     </div>

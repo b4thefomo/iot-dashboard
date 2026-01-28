@@ -195,7 +195,7 @@ export default function DocsPage() {
                 </h2>
               </div>
               <p className="text-slate-600 text-sm">
-                Integrate with the Subzero Asset Command API to access asset data programmatically.
+                Integrate with the Flux IoT API to access asset data programmatically.
               </p>
             </div>
 

@@ -36,6 +36,8 @@ import {
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { BleHeartRateConnector } from "@/components/ble-heart-rate-connector";
+import { getSocket } from "@/lib/socket";
 import {
   Dialog,
   DialogContent,
@@ -75,7 +77,19 @@ export default function BodyTrackerDashboard() {
   const [insights, setInsights] = React.useState<string | null>(null);
   const [insightsLoading, setInsightsLoading] = React.useState(false);
 
+  const [bleConnected, setBleConnected] = React.useState(false);
+
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+
+  const handleBleConnectionChange = React.useCallback((connected: boolean) => {
+    setBleConnected(connected);
+    const socket = getSocket();
+    if (connected) {
+      socket.emit('stopBodyTrackerSimulator');
+    } else {
+      socket.emit('startBodyTrackerSimulator');
+    }
+  }, []);
 
   // Fetch current mode on mount
   React.useEffect(() => {
@@ -207,7 +221,11 @@ export default function BodyTrackerDashboard() {
                 <Home className="h-4 w-4" />
                 Dashboard
               </Link>
-              {latest && (
+              <BleHeartRateConnector
+                apiUrl={apiUrl}
+                onConnectionChange={handleBleConnectionChange}
+              />
+              {latest && !bleConnected && (
                 <Badge variant="outline" className="gap-1">
                   <Battery className="h-3 w-3" />
                   {latest.battery_percent}%

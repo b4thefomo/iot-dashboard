@@ -746,6 +746,55 @@ app.post('/api/data', (req, res) => {
         io.emit('bodyTrackerData', normalizedBodyTracker);
         addToMasterHistory(normalizedBodyTracker, 'body_tracker');
 
+    } else if (sensorType === 'chest_strap') {
+        // BLE chest strap heart rate data — normalize into BodyTrackerReading format
+        console.log("💓 CHEST STRAP BLE:", {
+            device_id: data.device_id,
+            hr: data.heart_rate_bpm + " BPM",
+            hrv: data.hrv_rmssd_ms + "ms",
+            contact: data.contact_detected
+        });
+
+        const hrZone = data.heart_rate_zone || 'rest';
+
+        const normalizedChestStrap = {
+            device_id: data.device_id || 'BLE_CHEST_STRAP',
+            timestamp: data.server_timestamp,
+            raw_timestamp: data.timestamp,
+            // Real-time vitals (from BLE)
+            heart_rate_bpm: data.heart_rate_bpm,
+            heart_rate_zone: hrZone,
+            cadence_spm: 0,
+            battery_percent: data.battery_percent || 100,
+            // Form & Physics (not available from chest strap)
+            torso_lean_deg: 0,
+            vertical_oscillation_cm: 0,
+            impact_g_force: 0,
+            torso_rotation_deg: 0,
+            // Advanced health (HRV computed from RR intervals)
+            hrv_rmssd_ms: data.hrv_rmssd_ms || 0,
+            arrhythmia_flag: 'normal',
+            respiration_rate: 0,
+            // Raw data (not available from basic chest strap)
+            ecg_waveform: [],
+            accel_x: 0,
+            accel_y: 0,
+            accel_z: 0,
+            // Session metrics
+            total_steps: 0,
+            calories_burned: 0,
+            session_duration_sec: data.session_duration_sec || 0,
+            avg_heart_rate: data.avg_heart_rate || data.heart_rate_bpm,
+            max_heart_rate: data.max_heart_rate || data.heart_rate_bpm
+        };
+
+        bodyTrackerHistory.push(normalizedChestStrap);
+        if (bodyTrackerHistory.length > MAX_HISTORY) bodyTrackerHistory.shift();
+
+        lastBodyTrackerData = new Date();
+        io.emit('bodyTrackerData', normalizedChestStrap);
+        addToMasterHistory(normalizedChestStrap, 'chest_strap');
+
     } else if (sensorType === 'freezer') {
         console.log("🧊 FREEZER:", data.device_id, data.temp_cabinet + "°C", data.fault);
 

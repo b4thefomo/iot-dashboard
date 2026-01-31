@@ -117,7 +117,7 @@ function getZoneColor(zone: HeartRateZone): string {
 }
 
 export default function ChestStrapPage() {
-  const [bleConnected, setBleConnected] = React.useState(false);
+  const [_bleConnected, setBleConnected] = React.useState(false);
   const [history, setHistory] = React.useState<BodyTrackerReading[]>([]);
   const [latest, setLatest] = React.useState<BodyTrackerReading | null>(null);
   const [socketConnected, setSocketConnected] = React.useState(false);

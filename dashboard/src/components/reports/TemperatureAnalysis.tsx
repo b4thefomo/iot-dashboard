@@ -45,7 +45,7 @@ export function TemperatureAnalysis({ temperatureData, mkt }: TemperatureAnalysi
   const temps = temperatureData.map(t => t.temp);
   const minTemp = Math.min(...temps);
   const maxTemp = Math.max(...temps);
-  const avgTemp = temps.reduce((a, b) => a + b, 0) / temps.length;
+  const _avgTemp = temps.reduce((a, b) => a + b, 0) / temps.length;
   const tempVariance = maxTemp - minTemp;
 
   const isPass = mkt?.interpretation === "PASS";

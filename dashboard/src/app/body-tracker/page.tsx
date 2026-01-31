@@ -51,9 +51,7 @@ export default function BodyTrackerDashboard() {
   const {
     history,
     latest,
-    isConnected,
     isOnline,
-    simulatorRunning,
     avgHeartRate,
     maxHeartRate,
     avgHRV,

@@ -43,7 +43,7 @@ export function FleetEfficiencyAnalysis({ powerData, efficiency }: FleetEfficien
     }));
 
   const efficiencyScore = efficiency?.score || 0;
-  const scoreColor = efficiencyScore >= 85 ? "#10b981" : efficiencyScore >= 70 ? "#f59e0b" : "#ef4444";
+  const _scoreColor = efficiencyScore >= 85 ? "#10b981" : efficiencyScore >= 70 ? "#f59e0b" : "#ef4444";
   const scoreLabel = efficiencyScore >= 85 ? "EXCELLENT" : efficiencyScore >= 70 ? "GOOD" : "ATTENTION";
   const scoreBg = efficiencyScore >= 85 ? "from-emerald-500 to-teal-600" : efficiencyScore >= 70 ? "from-amber-500 to-orange-600" : "from-rose-500 to-red-600";
 

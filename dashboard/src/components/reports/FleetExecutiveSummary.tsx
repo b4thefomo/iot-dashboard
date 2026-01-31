@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { CheckCircle, AlertTriangle, XCircle, ThermometerSnowflake, Zap, Gauge, DoorOpen, TrendingUp } from "lucide-react";
+import { CheckCircle, AlertTriangle, XCircle, ThermometerSnowflake, Zap, Gauge, DoorOpen } from "lucide-react";
 
 interface FleetExecutiveSummaryProps {
   complianceStatus: "compliant" | "warning" | "non_compliant";

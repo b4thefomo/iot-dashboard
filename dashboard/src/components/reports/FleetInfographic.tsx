@@ -8,7 +8,7 @@ import {
   YAxis,
   ResponsiveContainer,
 } from "recharts";
-import { Snowflake, CheckCircle, AlertTriangle, XCircle, Zap, Thermometer, Shield, Activity } from "lucide-react";
+import { CheckCircle, AlertTriangle, XCircle, Zap, Thermometer, Shield, Activity } from "lucide-react";
 
 interface FleetInfographicProps {
   deviceId: string;

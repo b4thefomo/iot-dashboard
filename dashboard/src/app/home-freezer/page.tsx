@@ -92,8 +92,8 @@ export default function HomeFreezerDashboard() {
   const [activeTab, setActiveTab] = React.useState("freezer1");
 
   // Determine overall status for header badge
-  const anyOnline = freezer1.isOnline || freezer2.isOnline;
-  const bothOnline = freezer1.isOnline && freezer2.isOnline;
+  const _anyOnline = freezer1.isOnline || freezer2.isOnline;
+  const _bothOnline = freezer1.isOnline && freezer2.isOnline;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-cyan-50 via-slate-50 to-blue-50">

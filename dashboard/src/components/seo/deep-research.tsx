@@ -56,14 +56,14 @@ function DifficultyBadge({ difficulty }: { difficulty: number }) {
   return <Badge className={color}>{difficulty} - {label}</Badge>;
 }
 
-export function DeepResearchResults({ research, keyword }: DeepResearchResultsProps) {
+export function DeepResearchResults({ research, keyword: _keyword }: DeepResearchResultsProps) {
   if (!research) {
     return (
       <Card>
         <CardContent className="py-12 text-center text-muted-foreground">
           <Target className="h-12 w-12 mx-auto mb-4 opacity-50" />
           <p>Deep research results will appear here</p>
-          <p className="text-sm mt-1">Click "Deep Research" on a keyword to get comprehensive analysis</p>
+          <p className="text-sm mt-1">Click &ldquo;Deep Research&rdquo; on a keyword to get comprehensive analysis</p>
         </CardContent>
       </Card>
     );

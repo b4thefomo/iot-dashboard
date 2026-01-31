@@ -38,7 +38,7 @@ export function KeywordResults({ keyword, metrics, country }: KeywordResultsProp
     return (
       <Card>
         <CardContent className="py-8 text-center text-muted-foreground">
-          No data found for "{keyword}" in {country.toUpperCase()}
+          No data found for &ldquo;{keyword}&rdquo; in {country.toUpperCase()}
         </CardContent>
       </Card>
     );

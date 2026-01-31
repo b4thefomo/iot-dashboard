@@ -18,7 +18,7 @@ export function FleetCoverPage({
   locationAddress,
   reportPeriod,
   generatedAt,
-  auditHash,
+  auditHash: _auditHash,
 }: FleetCoverPageProps) {
   return (
     <div

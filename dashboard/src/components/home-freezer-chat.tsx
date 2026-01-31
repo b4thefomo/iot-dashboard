@@ -30,9 +30,9 @@ interface HomeFreezerChatProps {
 
 export function HomeFreezerChat({
   freezer1Latest,
-  freezer1History,
+  freezer1History: _freezer1History,
   freezer2Latest,
-  freezer2History
+  freezer2History: _freezer2History
 }: HomeFreezerChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");

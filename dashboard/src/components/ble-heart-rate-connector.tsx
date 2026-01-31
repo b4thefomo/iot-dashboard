@@ -94,7 +94,7 @@ export function BleHeartRateConnector({ apiUrl, onConnectionChange }: BleHeartRa
 
   const handleHeartRateMeasurement = React.useCallback(
     (event: Event) => {
-      const characteristic = event.target as BluetoothRemoteGATTCharacteristic;
+      const characteristic = event.target as unknown as BluetoothRemoteGATTCharacteristic;
       const value = characteristic.value;
       if (!value) return;
 

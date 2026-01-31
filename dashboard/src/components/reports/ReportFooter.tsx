@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Snowflake, CheckCircle, XCircle, ShieldCheck, FileCheck } from "lucide-react";
+import { CheckCircle, XCircle, ShieldCheck, FileCheck } from "lucide-react";
 
 interface ComplianceThreshold {
   metric: string;

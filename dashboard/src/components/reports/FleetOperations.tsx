@@ -17,7 +17,7 @@ interface FleetOperationsProps {
 
 export function FleetOperations({ doorOpenEvents, faults, totalReadings }: FleetOperationsProps) {
   const hasFaults = faults.length > 0;
-  const uniqueFaults = [...new Set(faults.map(f => f.fault))];
+  const uniqueFaults = Array.from(new Set(faults.map(f => f.fault)));
   const faultCounts = uniqueFaults.map(fault => ({
     fault,
     count: faults.filter(f => f.fault === fault).length,

@@ -25,7 +25,7 @@ interface BodyTrackerChatProps {
   history: BodyTrackerReading[];
 }
 
-export function BodyTrackerChat({ latest, history }: BodyTrackerChatProps) {
+export function BodyTrackerChat({ latest: _latest, history: _history }: BodyTrackerChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);

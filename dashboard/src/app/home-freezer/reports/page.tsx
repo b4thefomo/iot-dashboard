@@ -436,7 +436,7 @@ export default function GuardianLedgerReportsPage() {
                   <Activity className="h-5 w-5 mx-auto mb-2 text-blue-600" />
                   <div className="text-xs text-slate-500 mb-1">Health</div>
                   <div className="text-xl font-bold text-slate-900">
-                    {metrics.vhi?.index !== null ? `${metrics.vhi.index}%` : "N/A"}
+                    {metrics.vhi?.index != null ? `${metrics.vhi.index}%` : "N/A"}
                   </div>
                   {metrics.vhi && (
                     <Badge
@@ -459,7 +459,7 @@ export default function GuardianLedgerReportsPage() {
                   <Moon className="h-5 w-5 mx-auto mb-2 text-indigo-600" />
                   <div className="text-xs text-slate-500 mb-1">Night</div>
                   <div className="text-xl font-bold text-slate-900">
-                    {metrics.nightGap?.score !== null ? `${metrics.nightGap.score}%` : "N/A"}
+                    {metrics.nightGap?.score != null ? `${metrics.nightGap.score}%` : "N/A"}
                   </div>
                   {metrics.nightGap && (
                     <Badge

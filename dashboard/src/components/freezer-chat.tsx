@@ -30,6 +30,7 @@ import {
   CheckCircle,
   Wrench,
   ClipboardList,
+  Snowflake,
 } from "lucide-react";
 import { Markdown } from "@/components/ui/markdown";
 import { FluxLogo } from "@/components/flux-logo";

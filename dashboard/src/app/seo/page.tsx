@@ -295,7 +295,7 @@ export default function SEOStudioPage() {
                       disabled={isDeepResearching}
                     >
                       <Microscope className="h-4 w-4" />
-                      Research "{currentKeyword}"
+                      Research &ldquo;{currentKeyword}&rdquo;
                     </Button>
                   )}
                 </div>
@@ -306,7 +306,7 @@ export default function SEOStudioPage() {
                   <Loader2 className="h-12 w-12 mx-auto mb-4 animate-spin text-primary" />
                   <p className="text-lg">Conducting deep research...</p>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Analyzing market, competitors, and content strategy for "{currentKeyword}"
+                    Analyzing market, competitors, and content strategy for &ldquo;{currentKeyword}&rdquo;
                   </p>
                 </div>
               )}

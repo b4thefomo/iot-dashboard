@@ -5391,10 +5391,11 @@ io.on('connection', (socket) => {
         simulatorRunning: homeFreezerSimulatorRunning
     });
 
-    // Auto-start home freezer simulator when first client connects
-    if (!homeFreezerSimulatorRunning) {
-        startHomeFreezerSimulator();
-    }
+    // Simulator disabled - real ESP32 hardware is now sending data
+    // If you need to re-enable for testing, uncomment below:
+    // if (!homeFreezerSimulatorRunning) {
+    //     startHomeFreezerSimulator();
+    // }
 
     // Send home freezer 2 data (FREEZER_MAIN device)
     socket.emit('initialHomeFreezer2Data', {

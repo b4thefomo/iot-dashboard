@@ -89,7 +89,7 @@ function getStatusDisplay(status: FreezerStatus) {
 export default function HomeFreezerDashboard() {
   const freezer1 = useHomeFreezerData();
   const freezer2 = useHomeFreezer2Data();
-  const [activeTab, setActiveTab] = React.useState("freezer1");
+  const [activeTab, setActiveTab] = React.useState("freezer2"); // Default to real device tab
 
   // Determine overall status for header badge
   const _anyOnline = freezer1.isOnline || freezer2.isOnline;

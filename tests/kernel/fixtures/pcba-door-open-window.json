@@ -1,0 +1,14 @@
+[
+  {"temp": -18.0, "block_rms": 0.32, "block_dom_freq": 50.0, "block_spectral_entropy": 2.4, "door_angle_deg": 2.0, "door_open_duration_s": 0, "timestamp": "2024-01-01T00:00:00Z"},
+  {"temp": -17.5, "block_rms": 0.34, "block_dom_freq": 51.0, "block_spectral_entropy": 2.5, "door_angle_deg": 85.0, "door_open_duration_s": 5, "timestamp": "2024-01-01T00:00:05Z"},
+  {"temp": -17.0, "block_rms": 0.36, "block_dom_freq": 52.0, "block_spectral_entropy": 2.7, "door_angle_deg": 88.0, "door_open_duration_s": 10, "timestamp": "2024-01-01T00:00:10Z"},
+  {"temp": -16.2, "block_rms": 0.37, "block_dom_freq": 53.0, "block_spectral_entropy": 2.8, "door_angle_deg": 90.0, "door_open_duration_s": 15, "timestamp": "2024-01-01T00:00:15Z"},
+  {"temp": -15.5, "block_rms": 0.38, "block_dom_freq": 54.0, "block_spectral_entropy": 2.9, "door_angle_deg": 92.0, "door_open_duration_s": 20, "timestamp": "2024-01-01T00:00:20Z"},
+  {"temp": -14.8, "block_rms": 0.39, "block_dom_freq": 55.0, "block_spectral_entropy": 3.0, "door_angle_deg": 90.0, "door_open_duration_s": 25, "timestamp": "2024-01-01T00:00:25Z"},
+  {"temp": -14.0, "block_rms": 0.40, "block_dom_freq": 55.5, "block_spectral_entropy": 3.1, "door_angle_deg": 91.0, "door_open_duration_s": 30, "timestamp": "2024-01-01T00:00:30Z"},
+  {"temp": -13.5, "block_rms": 0.41, "block_dom_freq": 56.0, "block_spectral_entropy": 3.0, "door_angle_deg": 93.0, "door_open_duration_s": 35, "timestamp": "2024-01-01T00:00:35Z"},
+  {"temp": -13.0, "block_rms": 0.42, "block_dom_freq": 56.5, "block_spectral_entropy": 3.2, "door_angle_deg": 90.0, "door_open_duration_s": 40, "timestamp": "2024-01-01T00:00:40Z"},
+  {"temp": -12.5, "block_rms": 0.41, "block_dom_freq": 57.0, "block_spectral_entropy": 3.1, "door_angle_deg": 92.0, "door_open_duration_s": 45, "timestamp": "2024-01-01T00:00:45Z"},
+  {"temp": -12.0, "block_rms": 0.42, "block_dom_freq": 57.5, "block_spectral_entropy": 3.2, "door_angle_deg": 91.0, "door_open_duration_s": 50, "timestamp": "2024-01-01T00:00:50Z"},
+  {"temp": -11.5, "block_rms": 0.43, "block_dom_freq": 58.0, "block_spectral_entropy": 3.3, "door_angle_deg": 93.0, "door_open_duration_s": 55, "timestamp": "2024-01-01T00:00:55Z"}
+]

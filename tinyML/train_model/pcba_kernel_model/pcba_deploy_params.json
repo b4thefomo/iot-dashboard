@@ -1,0 +1,63 @@
+{
+  "feature_names": [
+    "temp_mean",
+    "temp_delta",
+    "temp_rate",
+    "temp_volatility",
+    "vib_rms",
+    "vib_rms_delta",
+    "vib_dom_freq",
+    "vib_spectral_stability",
+    "vib_spectral_entropy",
+    "vib_duty_cycle",
+    "door_angle_norm",
+    "door_open_duration",
+    "cooling_efficiency_proxy",
+    "temp_rate_vs_vib"
+  ],
+  "class_names": [
+    "STABLE",
+    "DOOR_OPEN",
+    "RECOVERING",
+    "DEFROST",
+    "DRIFT_WARM",
+    "DRIFT_COLD",
+    "EXCURSION",
+    "COMP_STRESS",
+    "FAULT"
+  ],
+  "n_features": 14,
+  "n_classes": 9,
+  "feature_min": [
+    -31.05652618408203,
+    -9.674757957458496,
+    -0.24962134659290314,
+    0.0,
+    0.0,
+    -0.4909776747226715,
+    0.0,
+    0.0,
+    1.2207107543945312,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    -1.009363055229187
+  ],
+  "feature_max": [
+    17.167949676513672,
+    19.931859970092773,
+    0.5783030986785889,
+    6.139959335327148,
+    0.7609965801239014,
+    0.3500624895095825,
+    79.17575073242188,
+    1.0,
+    5.130062103271484,
+    1.0,
+    1.0,
+    101.94113159179688,
+    1.0,
+    1.107480525970459
+  ]
+}

@@ -5340,6 +5340,1351 @@ Return ONLY valid JSON, no additional text.`;
     }
 });
 
+// ==================== KERNEL SIGNAL INTELLIGENCE ENGINE ====================
+
+// Constants
+const KERNEL_STATES = ['STABLE', 'DOOR_OPEN', 'RECOVERING', 'DEFROST', 'DRIFT_WARM', 'DRIFT_COLD', 'EXCURSION', 'COMP_STRESS', 'FAULT'];
+const KERNEL_STATE_MAP = {};
+KERNEL_STATES.forEach((s, i) => KERNEL_STATE_MAP[s] = i);
+
+const KERNEL_TIME_PERIODS = ['EARLY_MORNING', 'MORNING', 'MIDDAY', 'AFTERNOON', 'EVENING', 'NIGHT'];
+
+function getTimePeriod(date) {
+    const h = date.getHours();
+    if (h < 6) return 0;  // EARLY_MORNING
+    if (h < 10) return 1; // MORNING
+    if (h < 14) return 2; // MIDDAY
+    if (h < 18) return 3; // AFTERNOON
+    if (h < 22) return 4; // EVENING
+    return 5;             // NIGHT
+}
+
+// In-memory storage
+const kernelDevices = {};
+const kernelHistory = {};
+const kernelAlerts = {};
+const kernelComplianceLogs = {};
+const kernelSummaries = {};
+let kernelSimulatorRunning = false;
+let kernelSimulatorInterval = null;
+let kernelSimulatorTick = 0;
+
+const KERNEL_MAX_HISTORY = 200;
+const KERNEL_MAX_ALERTS = 50;
+const KERNEL_MAX_COMPLIANCE = 100;
+const KERNEL_MAX_SUMMARIES = 50;
+
+// Load MLP weights for JS inference
+let mlpWeights = null;
+try {
+    const weightsPath = path.join(__dirname, 'kernel', 'mlp_weights.json');
+    if (fs.existsSync(weightsPath)) {
+        mlpWeights = JSON.parse(fs.readFileSync(weightsPath, 'utf8'));
+        console.log('🧠 Kernel MLP weights loaded successfully');
+    } else {
+        console.log('⚠️ Kernel MLP weights not found — will use rules-only classification');
+    }
+} catch (e) {
+    console.log('⚠️ Failed to load Kernel MLP weights:', e.message);
+}
+
+// ---- Feature Computation Engine ----
+
+function linearRegSlope(values) {
+    const n = values.length;
+    if (n < 2) return 0;
+    let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+    for (let i = 0; i < n; i++) {
+        sumX += i; sumY += values[i];
+        sumXY += i * values[i]; sumX2 += i * i;
+    }
+    const denom = n * sumX2 - sumX * sumX;
+    return denom === 0 ? 0 : (n * sumXY - sumX * sumY) / denom;
+}
+
+function mean(arr) {
+    if (!arr.length) return 0;
+    return arr.reduce((a, b) => a + b, 0) / arr.length;
+}
+
+function stddev(arr) {
+    if (arr.length < 2) return 0;
+    const m = mean(arr);
+    return Math.sqrt(arr.reduce((sum, v) => sum + (v - m) ** 2, 0) / arr.length);
+}
+
+function correlation(a, b) {
+    if (a.length < 3 || a.length !== b.length) return 0;
+    const ma = mean(a), mb = mean(b);
+    const sa = stddev(a), sb = stddev(b);
+    if (sa === 0 || sb === 0) return 0;
+    const cov = a.reduce((s, v, i) => s + (v - ma) * (b[i] - mb), 0) / a.length;
+    return cov / (sa * sb);
+}
+
+function computeFeatures(sensorWindow) {
+    if (!sensorWindow || sensorWindow.length < 2) return null;
+
+    const temps = sensorWindow.map(s => s.temp_cabinet);
+    const ambients = sensorWindow.map(s => s.temp_ambient);
+    const powers = sensorWindow.map(s => s.compressor_power_w);
+    const freqs = sensorWindow.map(s => s.compressor_freq_hz);
+    const cops = sensorWindow.map(s => s.cop);
+    const tempRates = [];
+    for (let i = 1; i < temps.length; i++) {
+        tempRates.push(temps[i] - temps[i - 1]);
+    }
+
+    const lastSample = sensorWindow[sensorWindow.length - 1];
+    const doorOpen = lastSample.door_open ? 1.0 : 0.0;
+
+    // Calculate door duration (how many consecutive samples door was open)
+    let doorDuration = 0;
+    for (let i = sensorWindow.length - 1; i >= 0; i--) {
+        if (sensorWindow[i].door_open) doorDuration += 5; // 5s per sample
+        else break;
+    }
+
+    const tempMean = mean(temps);
+    const tempDelta = temps[temps.length - 1] - temps[0];
+    const tempRate = linearRegSlope(temps);
+    const tempVolatility = stddev(temps);
+    const tempAmbientGap = mean(ambients) - tempMean;
+
+    const powerMean = mean(powers);
+    const powerDelta = powers[powers.length - 1] - powers[0];
+    const freqMean = mean(freqs);
+    const freqStability = freqs.length > 1 ? Math.max(0, 1 - stddev(freqs) / Math.max(1, freqMean)) : 0.5;
+
+    const copMean = mean(cops);
+    const copTrend = linearRegSlope(cops);
+
+    const tempRateVsPower = correlation(tempRates, powers.slice(1));
+
+    // Recovery efficiency: how well compressor power translates to cooling
+    let recoveryEfficiency = 0.5;
+    if (powerMean > 50 && tempRate < 0) {
+        recoveryEfficiency = Math.min(1, Math.abs(tempRate) / (powerMean / 500));
+    } else if (powerMean > 50 && tempRate >= 0) {
+        recoveryEfficiency = Math.max(0, 0.3 - tempRate);
+    }
+
+    return {
+        temp_mean: tempMean,
+        temp_delta: tempDelta,
+        temp_rate: tempRate,
+        temp_volatility: tempVolatility,
+        temp_ambient_gap: tempAmbientGap,
+        power_mean: powerMean,
+        power_delta: powerDelta,
+        freq_mean: freqMean,
+        freq_stability: freqStability,
+        cop_mean: copMean,
+        cop_trend: copTrend,
+        temp_rate_vs_power: tempRateVsPower,
+        recovery_efficiency: Math.max(0, Math.min(1, recoveryEfficiency)),
+        door_state: doorOpen,
+        door_duration: doorDuration,
+    };
+}
+
+// ---- MLP Forward Pass (JavaScript) ----
+
+function mlpRelu(arr) {
+    return arr.map(v => Math.max(0, v));
+}
+
+function mlpSoftmax(arr) {
+    const maxVal = Math.max(...arr);
+    const exps = arr.map(v => Math.exp(v - maxVal));
+    const sum = exps.reduce((a, b) => a + b, 0);
+    return exps.map(v => v / sum);
+}
+
+function mlpForward(features, weights) {
+    // Normalize
+    const fmin = weights.feature_min;
+    const fmax = weights.feature_max;
+    let x = features.map((v, i) => (v - fmin[i]) / (fmax[i] - fmin[i] + 1e-8));
+
+    // Forward pass through each layer
+    for (const layer of weights.layers) {
+        const w = layer.weights;
+        const b = layer.bias;
+        const out = new Array(b.length).fill(0);
+        for (let j = 0; j < b.length; j++) {
+            let sum = b[j];
+            for (let k = 0; k < x.length; k++) {
+                sum += x[k] * w[k][j];
+            }
+            out[j] = sum;
+        }
+        // Apply activation (ReLU for hidden, softmax for output)
+        if (layer.name === 'output') {
+            x = mlpSoftmax(out);
+        } else {
+            x = mlpRelu(out);
+        }
+    }
+    return x;
+}
+
+// ---- Hybrid Classification Pipeline ----
+
+function ruleClassify(features, lastSample) {
+    // Stage 1: Clear-cut rules
+    if (lastSample.fault && lastSample.fault !== 'NORMAL') {
+        return { state: 8, state_name: 'FAULT', confidence: 1.0, method: 'rule' };
+    }
+    if (lastSample.defrost_on) {
+        return { state: 3, state_name: 'DEFROST', confidence: 1.0, method: 'rule' };
+    }
+    if (features.door_state === 1.0) {
+        return { state: 1, state_name: 'DOOR_OPEN', confidence: 1.0, method: 'rule' };
+    }
+    // Stable: low volatility AND small delta AND small rate
+    if (features.temp_volatility < 0.4 && Math.abs(features.temp_delta) < 1.0 && Math.abs(features.temp_rate) < 0.05) {
+        return { state: 0, state_name: 'STABLE', confidence: 0.95, method: 'rule' };
+    }
+    return null; // Ambiguous — needs ML
+}
+
+function mlpClassify(features) {
+    if (!mlpWeights) return null;
+
+    const featureArray = [
+        features.temp_mean, features.temp_delta, features.temp_rate,
+        features.temp_volatility, features.temp_ambient_gap,
+        features.power_mean, features.power_delta, features.freq_mean,
+        features.freq_stability, features.cop_mean, features.cop_trend,
+        features.temp_rate_vs_power, features.recovery_efficiency,
+        features.door_state, features.door_duration,
+    ];
+
+    const probs = mlpForward(featureArray, mlpWeights);
+    const maxIdx = probs.indexOf(Math.max(...probs));
+
+    return {
+        state: maxIdx,
+        state_name: KERNEL_STATES[maxIdx],
+        confidence: probs[maxIdx],
+        method: 'mlp',
+        probabilities: probs,
+    };
+}
+
+function sensorCrossValidation(state, features) {
+    let score = 1.0;
+    const penalties = [];
+
+    switch (state) {
+        case 0: // STABLE
+            if (features.temp_volatility > 1.0) { score -= 0.3; penalties.push('high_volatility'); }
+            if (Math.abs(features.temp_rate) > 0.1) { score -= 0.2; penalties.push('temp_changing'); }
+            break;
+        case 1: // DOOR_OPEN
+            if (features.door_state !== 1.0) { score -= 0.5; penalties.push('door_closed'); }
+            break;
+        case 2: // RECOVERING
+            if (features.temp_rate >= 0) { score -= 0.3; penalties.push('not_cooling'); }
+            if (features.power_mean < 100) { score -= 0.2; penalties.push('low_power'); }
+            break;
+        case 3: // DEFROST
+            if (features.power_mean > 100) { score -= 0.3; penalties.push('high_power'); }
+            break;
+        case 6: // EXCURSION
+            if (features.temp_mean < -15) { score -= 0.4; penalties.push('temp_normal'); }
+            break;
+        case 7: // COMP_STRESS
+            if (features.power_mean < 150) { score -= 0.3; penalties.push('power_normal'); }
+            if (features.freq_stability > 0.85) { score -= 0.2; penalties.push('freq_stable'); }
+            break;
+        case 8: // FAULT
+            if (features.power_mean > 100 && features.freq_stability > 0.8) { score -= 0.3; penalties.push('systems_ok'); }
+            break;
+    }
+
+    return { score: Math.max(0, score), penalties };
+}
+
+function classifySensorData(sensorWindow) {
+    const features = computeFeatures(sensorWindow);
+    if (!features) return null;
+
+    const lastSample = sensorWindow[sensorWindow.length - 1];
+
+    // Stage 1: Rules
+    let result = ruleClassify(features, lastSample);
+
+    // Stage 2: MLP (if rules didn't decide)
+    if (!result) {
+        result = mlpClassify(features);
+        if (!result) {
+            // Fallback: basic heuristic for ambiguous states
+            if (features.temp_rate < -0.05 && features.power_mean > 150) {
+                result = { state: 2, state_name: 'RECOVERING', confidence: 0.7, method: 'heuristic' };
+            } else if (features.temp_rate > 0.02 && features.temp_mean > -18) {
+                result = { state: 4, state_name: 'DRIFT_WARM', confidence: 0.6, method: 'heuristic' };
+            } else if (features.temp_rate < -0.02 && features.temp_mean < -22) {
+                result = { state: 5, state_name: 'DRIFT_COLD', confidence: 0.6, method: 'heuristic' };
+            } else if (features.temp_mean > -8) {
+                result = { state: 6, state_name: 'EXCURSION', confidence: 0.7, method: 'heuristic' };
+            } else if (features.power_mean > 250 || features.freq_stability < 0.65) {
+                result = { state: 7, state_name: 'COMP_STRESS', confidence: 0.6, method: 'heuristic' };
+            } else {
+                result = { state: 0, state_name: 'STABLE', confidence: 0.5, method: 'heuristic' };
+            }
+        }
+    }
+
+    // Sensor cross-validation
+    const consistency = sensorCrossValidation(result.state, features);
+
+    return {
+        state: result.state,
+        state_name: result.state_name,
+        confidence: result.confidence,
+        method: result.method,
+        sensor_consistency: consistency.score,
+        consistency_penalties: consistency.penalties,
+        feature_snapshot: features,
+        timestamp: new Date().toISOString(),
+    };
+}
+
+// ---- Markov Context Engine ----
+
+function createMarkovEngine() {
+    // 9×9 transition count matrices for 6 time periods
+    const matrices = [];
+    for (let t = 0; t < 6; t++) {
+        const m = [];
+        for (let i = 0; i < 9; i++) {
+            m.push(new Array(9).fill(0));
+        }
+        matrices.push(m);
+    }
+
+    return {
+        matrices,
+        totalTransitions: 0,
+        stateHistory: [],    // Last 100 transitions
+        lastState: null,
+        maturity: 'Learning',
+    };
+}
+
+function updateMarkovMaturity(engine) {
+    const t = engine.totalTransitions;
+    if (t >= 500) engine.maturity = 'Established';
+    else if (t >= 200) engine.maturity = 'Mature';
+    else if (t >= 50) engine.maturity = 'Developing';
+    else engine.maturity = 'Learning';
+}
+
+function markovLearn(engine, fromState, toState, timePeriod, confidence, consistency) {
+    // Gated learning: only high-quality classifications
+    if (confidence < 0.7 || consistency < 0.8) return false;
+
+    engine.matrices[timePeriod][fromState][toState] += 1;
+    // Time acceleration: count as 10x for faster maturity
+    engine.totalTransitions += 10;
+
+    engine.stateHistory.push({
+        from: fromState,
+        to: toState,
+        from_name: KERNEL_STATES[fromState],
+        to_name: KERNEL_STATES[toState],
+        timePeriod,
+        timestamp: new Date().toISOString(),
+    });
+    if (engine.stateHistory.length > 100) engine.stateHistory.shift();
+
+    updateMarkovMaturity(engine);
+    return true;
+}
+
+function getTransitionProbability(engine, fromState, toState, timePeriod) {
+    const row = engine.matrices[timePeriod][fromState];
+    const total = row.reduce((a, b) => a + b, 0);
+    if (total === 0) return 0;
+    return row[toState] / total;
+}
+
+function checkMarkovAnomaly(engine, fromState, toState, timePeriod) {
+    if (engine.maturity === 'Learning') return null; // Not enough data
+
+    const prob = getTransitionProbability(engine, fromState, toState, timePeriod);
+    const row = engine.matrices[timePeriod][fromState];
+    const total = row.reduce((a, b) => a + b, 0);
+
+    if (total < 5) return null; // Not enough data for this row
+
+    if (prob < 0.05) {
+        return {
+            type: 'markov_anomaly',
+            from_state: KERNEL_STATES[fromState],
+            to_state: KERNEL_STATES[toState],
+            probability: prob,
+            time_period: KERNEL_TIME_PERIODS[timePeriod],
+            severity: prob < 0.01 ? 'critical' : 'warning',
+            message: `Unusual transition ${KERNEL_STATES[fromState]} → ${KERNEL_STATES[toState]} (p=${(prob * 100).toFixed(1)}%) during ${KERNEL_TIME_PERIODS[timePeriod]}`,
+        };
+    }
+    return null;
+}
+
+function getMarkovData(engine) {
+    // Build probability matrices from count matrices
+    const probMatrices = engine.matrices.map(matrix => {
+        return matrix.map(row => {
+            const total = row.reduce((a, b) => a + b, 0);
+            return total === 0 ? row.map(() => 0) : row.map(v => v / total);
+        });
+    });
+
+    // Aggregate across all time periods
+    const aggregated = [];
+    for (let i = 0; i < 9; i++) {
+        const row = [];
+        for (let j = 0; j < 9; j++) {
+            let total = 0, count = 0;
+            for (let t = 0; t < 6; t++) {
+                const rowTotal = engine.matrices[t][i].reduce((a, b) => a + b, 0);
+                if (rowTotal > 0) {
+                    total += engine.matrices[t][i][j] / rowTotal;
+                    count++;
+                }
+            }
+            row.push(count > 0 ? total / count : 0);
+        }
+        aggregated.push(row);
+    }
+
+    return {
+        count_matrices: engine.matrices,
+        probability_matrices: probMatrices,
+        aggregated_probabilities: aggregated,
+        total_transitions: engine.totalTransitions,
+        maturity: engine.maturity,
+        state_history: engine.stateHistory.slice(-20),
+        state_names: KERNEL_STATES,
+        time_periods: KERNEL_TIME_PERIODS,
+    };
+}
+
+// ---- Kernel Simulator (3 Device Profiles) ----
+
+const KERNEL_DEVICE_PROFILES = {
+    KERNEL_001: {
+        name: 'London Cold Store',
+        lat: 51.5074, lon: -0.1278,
+        location_name: 'London, UK',
+        profile: 'healthy',
+        doorProb: 0.02, frostRate: 0.001, faultProb: 0.0001,
+        targetTemp: -20, ambientTemp: 22, compressorPower: 150,
+    },
+    KERNEL_002: {
+        name: 'Manchester Distribution',
+        lat: 53.4808, lon: -2.2426,
+        location_name: 'Manchester, UK',
+        profile: 'problematic',
+        doorProb: 0.15, frostRate: 0.005, faultProb: 0.002,
+        targetTemp: -18, ambientTemp: 24, compressorPower: 160,
+    },
+    KERNEL_003: {
+        name: 'Glasgow Pharma Depot',
+        lat: 55.8642, lon: -4.2518,
+        location_name: 'Glasgow, UK',
+        profile: 'degrading',
+        doorProb: 0.05, frostRate: 0.003, faultProb: 0.001,
+        targetTemp: -20, ambientTemp: 20, compressorPower: 155,
+        degradationRate: 0.0005,
+    },
+};
+
+function initKernelDevice(deviceId, profile) {
+    return {
+        deviceId,
+        profile,
+        // Physics state
+        temp: profile.targetTemp + (Math.random() - 0.5) * 2,
+        compressorOn: true,
+        compressorPower: profile.compressorPower,
+        compressorFreq: 50,
+        doorOpen: false,
+        doorTimer: 0,
+        defrostOn: false,
+        defrostTimer: 0,
+        frostLevel: 0.1,
+        cop: 2.5,
+        fault: 'NORMAL',
+        faultId: 0,
+        degradation: 0, // For degrading profile
+        // Rolling window
+        sensorWindow: [],
+        // Kernel state
+        currentState: null,
+        markovEngine: createMarkovEngine(),
+    };
+}
+
+function simulateKernelTick(device) {
+    const profile = KERNEL_DEVICE_PROFILES[device.deviceId];
+    const dt = 5; // 5 second tick
+
+    // Degradation (for KERNEL_003)
+    if (profile.degradationRate) {
+        device.degradation += profile.degradationRate;
+    }
+
+    // Door events
+    if (!device.doorOpen && Math.random() < profile.doorProb) {
+        device.doorOpen = true;
+        device.doorTimer = 10 + Math.random() * 40; // 10-50s
+    }
+    if (device.doorOpen) {
+        device.doorTimer -= dt;
+        if (device.doorTimer <= 0) {
+            device.doorOpen = false;
+            device.doorTimer = 0;
+        }
+    }
+
+    // Defrost cycles (every ~200 ticks for healthy, more often for problematic)
+    if (!device.defrostOn && device.frostLevel > 0.6 + Math.random() * 0.2) {
+        device.defrostOn = true;
+        device.defrostTimer = 30 + Math.random() * 30; // 30-60s
+    }
+    if (device.defrostOn) {
+        device.defrostTimer -= dt;
+        device.compressorOn = false;
+        device.frostLevel = Math.max(0, device.frostLevel - 0.02);
+        if (device.defrostTimer <= 0) {
+            device.defrostOn = false;
+            device.compressorOn = true;
+        }
+    }
+
+    // Frost accumulation
+    device.frostLevel += profile.frostRate + device.degradation * 0.001;
+    device.frostLevel = Math.min(1, Math.max(0, device.frostLevel));
+
+    // Fault events
+    if (device.fault === 'NORMAL' && Math.random() < profile.faultProb + device.degradation * 0.01) {
+        const faults = ['COMPRESSOR_OVERLOAD', 'SENSOR_DRIFT', 'REFRIGERANT_LOW', 'FAN_FAILURE'];
+        device.fault = faults[Math.floor(Math.random() * faults.length)];
+        device.faultId = Math.floor(Math.random() * 100) + 1;
+    }
+    // Faults auto-resolve after ~20 ticks
+    if (device.fault !== 'NORMAL' && Math.random() < 0.05) {
+        device.fault = 'NORMAL';
+        device.faultId = 0;
+    }
+
+    // Temperature physics
+    const ambientInfluence = (profile.ambientTemp - device.temp) * 0.001;
+    const doorInfluence = device.doorOpen ? (profile.ambientTemp - device.temp) * 0.005 : 0;
+    const compressorCooling = device.compressorOn && !device.defrostOn
+        ? -(device.compressorPower / 1000) * (1 - device.degradation * 0.3)
+        : 0;
+    const faultImpact = device.fault !== 'NORMAL' ? 0.05 : 0;
+
+    device.temp += (ambientInfluence + doorInfluence + compressorCooling + faultImpact) * dt;
+    device.temp += (Math.random() - 0.5) * 0.1; // Noise
+
+    // Compressor dynamics
+    if (device.compressorOn && !device.defrostOn) {
+        const load = Math.abs(device.temp - profile.targetTemp) / 10;
+        device.compressorPower = profile.compressorPower * (0.8 + load * 0.4) + device.degradation * 50;
+        device.compressorFreq = 48 + load * 15 + (Math.random() - 0.5) * 2;
+        if (device.fault !== 'NORMAL') {
+            device.compressorPower += (Math.random() - 0.3) * 80;
+            device.compressorFreq += (Math.random() - 0.3) * 10;
+        }
+    } else {
+        device.compressorPower = 5 + Math.random() * 10; // Standby
+        device.compressorFreq = 0;
+    }
+
+    // COP calculation
+    const tempDiff = Math.max(1, profile.ambientTemp - device.temp);
+    device.cop = device.compressorPower > 20
+        ? Math.max(0.1, (tempDiff * 10) / device.compressorPower * (1 - device.degradation * 0.4))
+        : 0;
+
+    device.compressorPower = Math.max(0, device.compressorPower);
+    device.compressorFreq = Math.max(0, device.compressorFreq);
+
+    // Build sensor reading
+    const reading = {
+        device_id: device.deviceId,
+        lat: profile.lat,
+        lon: profile.lon,
+        location_name: profile.location_name,
+        temp_cabinet: Math.round(device.temp * 100) / 100,
+        temp_ambient: profile.ambientTemp + (Math.random() - 0.5) * 1,
+        door_open: device.doorOpen,
+        defrost_on: device.defrostOn,
+        compressor_power_w: Math.round(device.compressorPower * 10) / 10,
+        compressor_freq_hz: Math.round(device.compressorFreq * 10) / 10,
+        frost_level: Math.round(device.frostLevel * 1000) / 1000,
+        cop: Math.round(device.cop * 100) / 100,
+        fault: device.fault,
+        fault_id: device.faultId,
+        timestamp: new Date().toISOString(),
+    };
+
+    // Update rolling window
+    device.sensorWindow.push(reading);
+    if (device.sensorWindow.length > 24) device.sensorWindow.shift();
+
+    // Classify if we have enough data
+    let classification = null;
+    if (device.sensorWindow.length >= 6) {
+        classification = classifySensorData(device.sensorWindow);
+
+        if (classification) {
+            // Markov learning
+            const prevState = device.currentState;
+            device.currentState = classification;
+
+            if (prevState !== null) {
+                const timePeriod = getTimePeriod(new Date());
+                const learned = markovLearn(
+                    device.markovEngine,
+                    prevState.state, classification.state,
+                    timePeriod, classification.confidence, classification.sensor_consistency
+                );
+
+                // Check for Markov anomaly
+                if (learned) {
+                    const anomaly = checkMarkovAnomaly(
+                        device.markovEngine,
+                        prevState.state, classification.state, timePeriod
+                    );
+                    if (anomaly) {
+                        anomaly.device_id = device.deviceId;
+                        anomaly.timestamp = new Date().toISOString();
+                        anomaly.classification = classification;
+
+                        if (!kernelAlerts[device.deviceId]) kernelAlerts[device.deviceId] = [];
+                        kernelAlerts[device.deviceId].push(anomaly);
+                        if (kernelAlerts[device.deviceId].length > KERNEL_MAX_ALERTS) {
+                            kernelAlerts[device.deviceId].shift();
+                        }
+
+                        // Emit alert
+                        io.emit('kernelAlert', anomaly);
+                    }
+                }
+            }
+        }
+    }
+
+    return { reading, classification };
+}
+
+function startKernelSimulator() {
+    if (kernelSimulatorRunning) return;
+
+    // Stop any running replay first (C1 fix — symmetric with replay stopping simulator)
+    if (kernelReplayRunning) stopKernelReplay();
+
+    console.log('🧠 Starting Kernel Signal Intelligence simulator...');
+    kernelSimulatorRunning = true;
+    kernelSimulatorTick = 0;
+
+    // Initialize devices
+    for (const [deviceId, profile] of Object.entries(KERNEL_DEVICE_PROFILES)) {
+        kernelDevices[deviceId] = initKernelDevice(deviceId, profile);
+        kernelHistory[deviceId] = kernelHistory[deviceId] || [];
+        kernelAlerts[deviceId] = kernelAlerts[deviceId] || [];
+        kernelComplianceLogs[deviceId] = kernelComplianceLogs[deviceId] || [];
+        kernelSummaries[deviceId] = kernelSummaries[deviceId] || [];
+    }
+
+    io.emit('kernelSimulatorStatus', { running: true, tick: 0 });
+
+    kernelSimulatorInterval = setInterval(() => {
+        kernelSimulatorTick++;
+
+        for (const deviceId of Object.keys(kernelDevices)) {
+            const device = kernelDevices[deviceId];
+            const { reading, classification } = simulateKernelTick(device);
+
+            // Store history
+            const historyEntry = { ...reading, classification };
+            kernelHistory[deviceId].push(historyEntry);
+            if (kernelHistory[deviceId].length > KERNEL_MAX_HISTORY) {
+                kernelHistory[deviceId].shift();
+            }
+
+            // Emit state update
+            io.emit('kernelStateUpdate', {
+                device_id: deviceId,
+                reading,
+                classification,
+                markov_maturity: device.markovEngine.maturity,
+                total_transitions: device.markovEngine.totalTransitions,
+            });
+
+            // Compliance log every 60 ticks (~5 min)
+            if (kernelSimulatorTick % 60 === 0) {
+                const complianceEntry = {
+                    device_id: deviceId,
+                    timestamp: new Date().toISOString(),
+                    tick: kernelSimulatorTick,
+                    reading,
+                    kernel_state: classification ? classification.state_name : 'UNKNOWN',
+                    confidence: classification ? classification.confidence : 0,
+                    method: classification ? classification.method : 'none',
+                };
+                kernelComplianceLogs[deviceId].push(complianceEntry);
+                if (kernelComplianceLogs[deviceId].length > KERNEL_MAX_COMPLIANCE) {
+                    kernelComplianceLogs[deviceId].shift();
+                }
+            }
+        }
+
+        // Summary every 12 ticks (~1 min demo)
+        if (kernelSimulatorTick % 12 === 0) {
+            const summary = generateKernelSummary();
+            io.emit('kernelSummary', summary);
+        }
+    }, 5000); // 5s interval
+}
+
+function stopKernelSimulator() {
+    if (!kernelSimulatorRunning) return;
+
+    console.log('🛑 Stopping Kernel simulator...');
+    clearInterval(kernelSimulatorInterval);
+    kernelSimulatorInterval = null;
+    kernelSimulatorRunning = false;
+
+    io.emit('kernelSimulatorStatus', { running: false, tick: kernelSimulatorTick });
+}
+
+// ---- Kernel Replay Engine (Real Dataset) ----
+
+let kernelReplayIndex = null;       // { runId -> { fault, faultId, lineStart } }
+let kernelReplayFaults = null;      // unique fault types
+let kernelReplayRunning = false;
+let kernelReplayInterval = null;
+let kernelReplayData = null;        // interpolated readings for current run
+let kernelReplayIdx = 0;
+let kernelReplaySpeed = 1;
+let kernelReplayRunId = null;
+let kernelReplayStateBreakdown = {};  // C3 fix: module-level so speed changes don't reset it
+let kernelReplayConfusionMatrix = {}; // S3: track actual vs predicted for accuracy metrics
+let kernelReplayMethodCounts = {};    // S3: count classifications by method (rule/mlp/heuristic)
+const REPLAY_CSV_PATH = path.join(__dirname, 'datasets', 'fridge_fault_timeseries_dataset.csv');
+const REPLAY_DEVICE_ID = 'REPLAY_001';
+let replayCsvColumnMap = null;  // S1: header name → column index map
+
+// S1: Required columns for replay CSV
+const REPLAY_REQUIRED_COLUMNS = ['T_amb', 'T_cab', 'N_comp_Hz', 'P_comp_W', 'COP', 'frost_level', 'time_min', 'run_id', 'fault', 'fault_id', 'door_open', 'defrost_on'];
+
+function buildCsvColumnMap(headerLine) {
+    var cols = headerLine.split(',');
+    var map = {};
+    for (var i = 0; i < cols.length; i++) {
+        map[cols[i].trim()] = i;
+    }
+    // Validate required columns exist
+    var missing = [];
+    for (var j = 0; j < REPLAY_REQUIRED_COLUMNS.length; j++) {
+        if (map[REPLAY_REQUIRED_COLUMNS[j]] === undefined) {
+            missing.push(REPLAY_REQUIRED_COLUMNS[j]);
+        }
+    }
+    if (missing.length > 0) {
+        throw new Error('Replay CSV missing required columns: ' + missing.join(', '));
+    }
+    return map;
+}
+
+function loadReplayIndex() {
+    return new Promise((resolve, reject) => {
+        if (kernelReplayIndex) { resolve(kernelReplayIndex); return; }
+        const readline = require('readline');
+        const index = {};
+        const faultSet = {};
+        let lineNum = 0;
+        let currentRunId = null;
+        let currentFault = null;
+        let currentFaultId = 0;
+        let currentLineStart = 0;
+
+        const stream = fs.createReadStream(REPLAY_CSV_PATH, { encoding: 'utf8' });
+        const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+
+        rl.on('line', (line) => {
+            lineNum++;
+            if (lineNum === 1) {
+                // S1: parse header and build column map
+                try {
+                    replayCsvColumnMap = buildCsvColumnMap(line);
+                } catch (e) {
+                    rl.close();
+                    stream.destroy();
+                    reject(e);
+                }
+                return;
+            }
+            const cols = line.split(',');
+            const cm = replayCsvColumnMap;
+            const runId = parseInt(cols[cm['run_id']], 10);
+            const fault = cols[cm['fault']];
+            const faultId = parseInt(cols[cm['fault_id']], 10);
+            if (runId !== currentRunId) {
+                if (currentRunId !== null) {
+                    index[currentRunId] = { fault: currentFault, faultId: currentFaultId, lineStart: currentLineStart };
+                }
+                currentRunId = runId;
+                currentFault = fault;
+                currentFaultId = faultId;
+                currentLineStart = lineNum;
+            }
+        });
+
+        rl.on('close', () => {
+            if (currentRunId !== null) {
+                index[currentRunId] = { fault: currentFault, faultId: currentFaultId, lineStart: currentLineStart };
+            }
+            for (var key in index) { faultSet[index[key].fault] = true; }
+            kernelReplayIndex = index;
+            kernelReplayFaults = Object.keys(faultSet).sort();
+            console.log('📊 Replay index built: ' + Object.keys(index).length + ' runs, ' + kernelReplayFaults.length + ' fault types');
+            resolve(index);
+        });
+
+        rl.on('error', reject);
+    });
+}
+
+function loadReplayRun(runId) {
+    return new Promise((resolve, reject) => {
+        if (!kernelReplayIndex || !kernelReplayIndex[runId]) {
+            reject(new Error('Run ' + runId + ' not found in index'));
+            return;
+        }
+        if (!replayCsvColumnMap) {
+            reject(new Error('CSV column map not initialized — call loadReplayIndex first'));
+            return;
+        }
+        const cm = replayCsvColumnMap;
+        const readline = require('readline');
+        const rows = [];
+        let lineNum = 0;
+        const stream = fs.createReadStream(REPLAY_CSV_PATH, { encoding: 'utf8' });
+        const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+
+        rl.on('line', (line) => {
+            lineNum++;
+            if (lineNum === 1) return; // skip header
+            const cols = line.split(',');
+            const rid = parseInt(cols[cm['run_id']], 10);
+            if (rid === runId) {
+                rows.push({
+                    T_amb: parseFloat(cols[cm['T_amb']]),
+                    T_cab: parseFloat(cols[cm['T_cab']]),
+                    N_comp_Hz: parseFloat(cols[cm['N_comp_Hz']]),
+                    P_comp_W: parseFloat(cols[cm['P_comp_W']]),
+                    COP: parseFloat(cols[cm['COP']]),
+                    frost_level: parseFloat(cols[cm['frost_level']]),
+                    time_min: parseInt(cols[cm['time_min']], 10),
+                    fault: cols[cm['fault']],
+                    fault_id: parseInt(cols[cm['fault_id']], 10),
+                    door_open: parseInt(cols[cm['door_open']], 10) === 1,
+                    defrost_on: parseInt(cols[cm['defrost_on']], 10) === 1,
+                });
+            } else if (rows.length > 0) {
+                // Past the run, stop early
+                rl.close();
+                stream.destroy();
+            }
+        });
+
+        rl.on('close', () => resolve(rows));
+        rl.on('error', reject);
+    });
+}
+
+function interpolateToFiveSeconds(rows) {
+    var result = [];
+    var baseTime = new Date();
+    baseTime.setMilliseconds(0);
+    baseTime.setSeconds(0);
+
+    for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
+        var next = (i < rows.length - 1) ? rows[i + 1] : null;
+        var steps = next ? 12 : 1; // 12 five-second steps per 1-minute gap
+
+        for (var s = 0; s < steps; s++) {
+            var t = s / steps;
+            var ts = new Date(baseTime.getTime() + (row.time_min * 60 + s * 5) * 1000);
+
+            var reading = {
+                device_id: REPLAY_DEVICE_ID,
+                lat: 40.7128,
+                lon: -74.006,
+                location_name: 'Replay Dataset',
+                temp_cabinet: next ? row.T_cab + (next.T_cab - row.T_cab) * t : row.T_cab,
+                temp_ambient: next ? row.T_amb + (next.T_amb - row.T_amb) * t : row.T_amb,
+                door_open: row.door_open,
+                defrost_on: row.defrost_on,
+                compressor_power_w: next ? row.P_comp_W + (next.P_comp_W - row.P_comp_W) * t : row.P_comp_W,
+                compressor_freq_hz: next ? row.N_comp_Hz + (next.N_comp_Hz - row.N_comp_Hz) * t : row.N_comp_Hz,
+                frost_level: next ? row.frost_level + (next.frost_level - row.frost_level) * t : row.frost_level,
+                cop: next ? row.COP + (next.COP - row.COP) * t : row.COP,
+                fault: 'NORMAL',
+                fault_id: 0,
+                timestamp: ts.toISOString(),
+                _ground_truth: row.fault,
+            };
+
+            // Round numeric fields
+            reading.temp_cabinet = Math.round(reading.temp_cabinet * 100) / 100;
+            reading.temp_ambient = Math.round(reading.temp_ambient * 100) / 100;
+            reading.compressor_power_w = Math.round(reading.compressor_power_w * 10) / 10;
+            reading.compressor_freq_hz = Math.round(reading.compressor_freq_hz * 10) / 10;
+            reading.frost_level = Math.round(reading.frost_level * 1000) / 1000;
+            reading.cop = Math.round(reading.cop * 100) / 100;
+
+            result.push(reading);
+        }
+    }
+    return result;
+}
+
+// S3: Compute accuracy metrics from confusion matrix
+function computeReplayAccuracyMetrics() {
+    var totalCorrect = 0;
+    var totalSamples = 0;
+    var perState = {};
+
+    // Build per-state TP/FP/FN counts
+    for (var actual in kernelReplayConfusionMatrix) {
+        for (var predicted in kernelReplayConfusionMatrix[actual]) {
+            var count = kernelReplayConfusionMatrix[actual][predicted];
+            totalSamples += count;
+            if (actual === predicted) totalCorrect += count;
+
+            // True positives for this state
+            if (!perState[predicted]) perState[predicted] = { tp: 0, fp: 0, fn: 0 };
+            if (!perState[actual]) perState[actual] = { tp: 0, fp: 0, fn: 0 };
+
+            if (actual === predicted) {
+                perState[predicted].tp += count;
+            } else {
+                perState[predicted].fp += count;  // predicted this state but it was wrong
+                perState[actual].fn += count;      // missed this actual state
+            }
+        }
+    }
+
+    var overallAccuracy = totalSamples > 0 ? totalCorrect / totalSamples : 0;
+    var stateMetrics = {};
+    for (var state in perState) {
+        var s = perState[state];
+        var precision = (s.tp + s.fp) > 0 ? s.tp / (s.tp + s.fp) : 0;
+        var recall = (s.tp + s.fn) > 0 ? s.tp / (s.tp + s.fn) : 0;
+        var f1 = (precision + recall) > 0 ? 2 * precision * recall / (precision + recall) : 0;
+        stateMetrics[state] = {
+            precision: Math.round(precision * 1000) / 1000,
+            recall: Math.round(recall * 1000) / 1000,
+            f1: Math.round(f1 * 1000) / 1000,
+            support: s.tp + s.fn,
+        };
+    }
+
+    return {
+        overall_accuracy: Math.round(overallAccuracy * 1000) / 1000,
+        total_samples: totalSamples,
+        correct: totalCorrect,
+        confusion_matrix: kernelReplayConfusionMatrix,
+        per_state: stateMetrics,
+        method_counts: kernelReplayMethodCounts,
+    };
+}
+
+function startKernelReplay(runId, speed) {
+    // Stop simulator if running
+    if (kernelSimulatorRunning) stopKernelSimulator();
+    // Stop existing replay if running
+    if (kernelReplayRunning) stopKernelReplay();
+
+    speed = speed || 1;
+    var fault = kernelReplayIndex[runId] ? kernelReplayIndex[runId].fault : 'UNKNOWN';
+    console.log('🔄 Starting Kernel replay: run ' + runId + ' (' + fault + ') at ' + speed + 'x');
+
+    kernelReplayRunning = true;
+    kernelReplayRunId = runId;
+    kernelReplaySpeed = speed;
+    kernelReplayIdx = 0;
+
+    // Initialize fresh replay device
+    var replayDevice = {
+        deviceId: REPLAY_DEVICE_ID,
+        profile: { lat: 40.7128, lon: -74.006, location_name: 'Replay Dataset', profile: 'replay' },
+        sensorWindow: [],
+        currentState: null,
+        markovEngine: createMarkovEngine(),
+    };
+    kernelDevices[REPLAY_DEVICE_ID] = replayDevice;
+    kernelHistory[REPLAY_DEVICE_ID] = [];
+    kernelAlerts[REPLAY_DEVICE_ID] = [];
+
+    // C3 fix: initialize module-level breakdown once per replay start (not per speed change)
+    kernelReplayStateBreakdown = {};
+    KERNEL_STATES.forEach(function(s) { kernelReplayStateBreakdown[s] = 0; });
+
+    // S3: initialize accuracy tracking
+    kernelReplayConfusionMatrix = {};
+    kernelReplayMethodCounts = { rule: 0, mlp: 0, heuristic: 0 };
+
+    io.emit('kernelReplayStatus', {
+        running: true, runId: runId, fault: fault, speed: speed,
+        progress: 0, total: kernelReplayData.length,
+    });
+
+    var intervalMs = Math.max(10, Math.round(5000 / speed));
+
+    kernelReplayInterval = setInterval(function() {
+        if (kernelReplayIdx >= kernelReplayData.length) {
+            // Run complete
+            clearInterval(kernelReplayInterval);
+            kernelReplayInterval = null;
+            kernelReplayRunning = false;
+
+            var totalClassifications = 0;
+            for (var k in kernelReplayStateBreakdown) totalClassifications += kernelReplayStateBreakdown[k];
+
+            // S3: compute accuracy metrics
+            var accuracyMetrics = computeReplayAccuracyMetrics();
+
+            io.emit('kernelReplayComplete', {
+                runId: runId, fault: fault,
+                stateBreakdown: kernelReplayStateBreakdown,
+                totalClassifications: totalClassifications,
+                accuracy: accuracyMetrics,
+            });
+            io.emit('kernelReplayStatus', {
+                running: false, runId: runId, fault: fault, speed: speed,
+                progress: kernelReplayData.length, total: kernelReplayData.length,
+            });
+            console.log('✅ Replay complete: run ' + runId + ', ' + totalClassifications + ' classifications, accuracy: ' + (accuracyMetrics.overall_accuracy * 100).toFixed(1) + '%');
+
+            // Clean up replay device (C1 fix)
+            delete kernelDevices[REPLAY_DEVICE_ID];
+            delete kernelHistory[REPLAY_DEVICE_ID];
+            delete kernelAlerts[REPLAY_DEVICE_ID];
+            return;
+        }
+
+        var reading = kernelReplayData[kernelReplayIdx];
+        var device = kernelDevices[REPLAY_DEVICE_ID];
+        kernelReplayIdx++;
+
+        // Feed through the pipeline (same as simulateKernelTick inner logic)
+        device.sensorWindow.push(reading);
+        if (device.sensorWindow.length > 24) device.sensorWindow.shift();
+
+        var classification = null;
+        if (device.sensorWindow.length >= 6) {
+            classification = classifySensorData(device.sensorWindow);
+
+            if (classification) {
+                kernelReplayStateBreakdown[classification.state_name] = (kernelReplayStateBreakdown[classification.state_name] || 0) + 1;
+
+                // S3: track confusion matrix and method counts
+                kernelReplayMethodCounts[classification.method] = (kernelReplayMethodCounts[classification.method] || 0) + 1;
+                if (reading._ground_truth) {
+                    var gt = reading._ground_truth;
+                    if (!kernelReplayConfusionMatrix[gt]) kernelReplayConfusionMatrix[gt] = {};
+                    kernelReplayConfusionMatrix[gt][classification.state_name] = (kernelReplayConfusionMatrix[gt][classification.state_name] || 0) + 1;
+                }
+
+                var prevState = device.currentState;
+                device.currentState = classification;
+
+                if (prevState !== null) {
+                    var timePeriod = getTimePeriod(new Date(reading.timestamp));
+                    var learned = markovLearn(
+                        device.markovEngine,
+                        prevState.state, classification.state,
+                        timePeriod, classification.confidence, classification.sensor_consistency
+                    );
+
+                    if (learned) {
+                        var anomaly = checkMarkovAnomaly(
+                            device.markovEngine,
+                            prevState.state, classification.state, timePeriod
+                        );
+                        if (anomaly) {
+                            anomaly.device_id = REPLAY_DEVICE_ID;
+                            anomaly.timestamp = reading.timestamp;
+                            anomaly.classification = classification;
+                            if (!kernelAlerts[REPLAY_DEVICE_ID]) kernelAlerts[REPLAY_DEVICE_ID] = [];
+                            kernelAlerts[REPLAY_DEVICE_ID].push(anomaly);
+                            if (kernelAlerts[REPLAY_DEVICE_ID].length > KERNEL_MAX_ALERTS) {
+                                kernelAlerts[REPLAY_DEVICE_ID].shift();
+                            }
+                            io.emit('kernelAlert', anomaly);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Store history
+        var historyEntry = Object.assign({}, reading, { classification: classification });
+        kernelHistory[REPLAY_DEVICE_ID] = kernelHistory[REPLAY_DEVICE_ID] || [];
+        kernelHistory[REPLAY_DEVICE_ID].push(historyEntry);
+        if (kernelHistory[REPLAY_DEVICE_ID].length > KERNEL_MAX_HISTORY) {
+            kernelHistory[REPLAY_DEVICE_ID].shift();
+        }
+
+        // Emit state update with ground truth
+        io.emit('kernelStateUpdate', {
+            device_id: REPLAY_DEVICE_ID,
+            reading: reading,
+            classification: classification,
+            markov_maturity: device.markovEngine.maturity,
+            total_transitions: device.markovEngine.totalTransitions,
+            ground_truth: reading._ground_truth,
+        });
+
+        // Emit progress every 100 readings
+        if (kernelReplayIdx % 100 === 0) {
+            io.emit('kernelReplayStatus', {
+                running: true, runId: runId, fault: fault, speed: speed,
+                progress: kernelReplayIdx, total: kernelReplayData.length,
+            });
+        }
+    }, intervalMs);
+}
+
+function stopKernelReplay() {
+    if (!kernelReplayRunning) return;
+    console.log('🛑 Stopping Kernel replay...');
+    clearInterval(kernelReplayInterval);
+    kernelReplayInterval = null;
+    kernelReplayRunning = false;
+    io.emit('kernelReplayStatus', {
+        running: false, runId: kernelReplayRunId, fault: kernelReplayIndex && kernelReplayIndex[kernelReplayRunId] ? kernelReplayIndex[kernelReplayRunId].fault : null,
+        speed: kernelReplaySpeed, progress: kernelReplayIdx, total: kernelReplayData ? kernelReplayData.length : 0,
+    });
+
+    // Clean up replay device so simulator doesn't iterate over it (C1 fix)
+    delete kernelDevices[REPLAY_DEVICE_ID];
+    delete kernelHistory[REPLAY_DEVICE_ID];
+    delete kernelAlerts[REPLAY_DEVICE_ID];
+}
+
+function generateKernelSummary() {
+    const deviceSummaries = {};
+
+    for (const [deviceId, device] of Object.entries(kernelDevices)) {
+        const history = kernelHistory[deviceId] || [];
+        const recent = history.slice(-12);
+
+        // State breakdown
+        const stateBreakdown = {};
+        KERNEL_STATES.forEach(s => stateBreakdown[s] = 0);
+        for (const entry of recent) {
+            if (entry.classification) {
+                stateBreakdown[entry.classification.state_name] = (stateBreakdown[entry.classification.state_name] || 0) + 1;
+            }
+        }
+
+        // Temp/power stats
+        const temps = recent.map(r => r.temp_cabinet).filter(v => v != null);
+        const powers = recent.map(r => r.compressor_power_w).filter(v => v != null);
+
+        const alerts = (kernelAlerts[deviceId] || []).filter(a => {
+            const age = Date.now() - new Date(a.timestamp).getTime();
+            return age < 120000; // Last 2 minutes
+        });
+
+        deviceSummaries[deviceId] = {
+            device_id: deviceId,
+            current_state: device.currentState ? device.currentState.state_name : 'UNKNOWN',
+            state_breakdown: stateBreakdown,
+            temp_avg: temps.length ? Math.round(mean(temps) * 100) / 100 : null,
+            temp_min: temps.length ? Math.min(...temps) : null,
+            temp_max: temps.length ? Math.max(...temps) : null,
+            power_avg: powers.length ? Math.round(mean(powers) * 10) / 10 : null,
+            anomaly_count: alerts.length,
+            markov_maturity: device.markovEngine.maturity,
+            total_transitions: device.markovEngine.totalTransitions,
+        };
+
+        // Store summary
+        kernelSummaries[deviceId] = kernelSummaries[deviceId] || [];
+        kernelSummaries[deviceId].push({
+            ...deviceSummaries[deviceId],
+            timestamp: new Date().toISOString(),
+        });
+        if (kernelSummaries[deviceId].length > KERNEL_MAX_SUMMARIES) {
+            kernelSummaries[deviceId].shift();
+        }
+    }
+
+    return {
+        timestamp: new Date().toISOString(),
+        tick: kernelSimulatorTick,
+        simulator_running: kernelSimulatorRunning,
+        mlpLoaded: mlpWeights !== null,  // C2: surface MLP status
+        devices: deviceSummaries,
+        fleet_summary: {
+            total_devices: Object.keys(deviceSummaries).length,
+            healthy: Object.values(deviceSummaries).filter(d => d.current_state === 'STABLE').length,
+            warning: Object.values(deviceSummaries).filter(d => ['DOOR_OPEN', 'DRIFT_WARM', 'DRIFT_COLD', 'RECOVERING'].includes(d.current_state)).length,
+            critical: Object.values(deviceSummaries).filter(d => ['EXCURSION', 'COMP_STRESS', 'FAULT'].includes(d.current_state)).length,
+        },
+    };
+}
+
+// ---- Kernel API Endpoints ----
+
+app.get('/api/kernel/status', (req, res) => {
+    const devices = {};
+    for (const [deviceId, device] of Object.entries(kernelDevices)) {
+        const lastReading = device.sensorWindow.length > 0
+            ? device.sensorWindow[device.sensorWindow.length - 1]
+            : null;
+        devices[deviceId] = {
+            device_id: deviceId,
+            profile: KERNEL_DEVICE_PROFILES[deviceId]?.profile,
+            location_name: KERNEL_DEVICE_PROFILES[deviceId]?.location_name,
+            lat: KERNEL_DEVICE_PROFILES[deviceId]?.lat,
+            lon: KERNEL_DEVICE_PROFILES[deviceId]?.lon,
+            current_reading: lastReading,
+            current_state: device.currentState,
+            markov_maturity: device.markovEngine.maturity,
+            total_transitions: device.markovEngine.totalTransitions,
+        };
+    }
+
+    const summary = generateKernelSummary();
+
+    res.json({
+        simulator_running: kernelSimulatorRunning,
+        tick: kernelSimulatorTick,
+        devices,
+        fleet_summary: summary.fleet_summary,
+        mlpLoaded: mlpWeights !== null,  // C2: surface MLP status
+    });
+});
+
+app.get('/api/kernel/device/:id/history', (req, res) => {
+    const deviceId = req.params.id;
+    const history = kernelHistory[deviceId] || [];
+    const limit = Math.max(1, Math.min(1000, parseInt(req.query.limit) || 100));  // S2: clamp [1, 1000]
+    res.json({
+        device_id: deviceId,
+        history: history.slice(-limit),
+        total: history.length,
+    });
+});
+
+app.get('/api/kernel/device/:id/markov', (req, res) => {
+    const deviceId = req.params.id;
+    const device = kernelDevices[deviceId];
+    if (!device) {
+        return res.status(404).json({ error: 'Device not found' });
+    }
+    res.json({
+        device_id: deviceId,
+        ...getMarkovData(device.markovEngine),
+    });
+});
+
+app.get('/api/kernel/device/:id/alerts', (req, res) => {
+    const deviceId = req.params.id;
+    const alerts = kernelAlerts[deviceId] || [];
+    const limit = Math.max(1, Math.min(1000, parseInt(req.query.limit) || 50));  // S2: clamp [1, 1000]
+    res.json({
+        device_id: deviceId,
+        alerts: alerts.slice(-limit),
+        total: alerts.length,
+    });
+});
+
+app.get('/api/kernel/summary', (req, res) => {
+    const summary = generateKernelSummary();
+    res.json(summary);
+});
+
+app.post('/api/kernel/simulator/start', (req, res) => {
+    startKernelSimulator();
+    res.json({ status: 'started', running: kernelSimulatorRunning });
+});
+
+app.post('/api/kernel/simulator/stop', (req, res) => {
+    stopKernelSimulator();
+    res.json({ status: 'stopped', running: kernelSimulatorRunning });
+});
+
+// ---- Kernel Replay Endpoints ----
+
+app.get('/api/kernel/replay/runs', async (req, res) => {
+    try {
+        await loadReplayIndex();
+        const faultFilter = req.query.fault;
+        const runs = [];
+        for (const runId in kernelReplayIndex) {
+            const entry = kernelReplayIndex[runId];
+            if (!faultFilter || entry.fault === faultFilter) {
+                runs.push({ run_id: parseInt(runId, 10), fault: entry.fault });
+            }
+        }
+        res.json({ runs: runs, total: runs.length });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/kernel/replay/faults', async (req, res) => {
+    try {
+        await loadReplayIndex();
+        res.json({ faults: kernelReplayFaults });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/kernel/replay/start', async (req, res) => {
+    try {
+        await loadReplayIndex();
+        const runId = parseInt(req.body.runId, 10);
+        // S2: validate runId is a valid integer
+        if (isNaN(runId)) {
+            return res.status(400).json({ error: 'Invalid runId: must be an integer' });
+        }
+        // S2: clamp speed to [1, 500]
+        const speed = Math.max(1, Math.min(500, parseInt(req.body.speed, 10) || 1));
+        if (!kernelReplayIndex[runId]) {
+            return res.status(404).json({ error: 'Run not found: ' + runId });
+        }
+        const rows = await loadReplayRun(runId);
+        kernelReplayData = interpolateToFiveSeconds(rows);
+        startKernelReplay(runId, speed);
+        res.json({ status: 'started', runId: runId, fault: kernelReplayIndex[runId].fault, speed: speed, totalReadings: kernelReplayData.length });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/kernel/replay/stop', (req, res) => {
+    stopKernelReplay();
+    res.json({ status: 'stopped', running: kernelReplayRunning });
+});
+
 // ==================== DEBUG ENDPOINT ====================
 
 app.get('/api/debug', (req, res) => {
@@ -5424,9 +6769,833 @@ io.on('connection', (socket) => {
         stopBodyTrackerSimulator();
     });
 
+    // Send Kernel data
+    socket.emit('initialKernelData', {
+        devices: Object.fromEntries(
+            Object.entries(kernelDevices).map(([id, device]) => [id, {
+                device_id: id,
+                profile: (KERNEL_DEVICE_PROFILES[id] && KERNEL_DEVICE_PROFILES[id].profile) || (device.profile && device.profile.profile) || 'unknown',
+                location_name: (KERNEL_DEVICE_PROFILES[id] && KERNEL_DEVICE_PROFILES[id].location_name) || (device.profile && device.profile.location_name) || 'Unknown',
+                lat: (KERNEL_DEVICE_PROFILES[id] && KERNEL_DEVICE_PROFILES[id].lat) || (device.profile && device.profile.lat) || 0,
+                lon: (KERNEL_DEVICE_PROFILES[id] && KERNEL_DEVICE_PROFILES[id].lon) || (device.profile && device.profile.lon) || 0,
+                current_reading: device.sensorWindow.length > 0
+                    ? device.sensorWindow[device.sensorWindow.length - 1] : null,
+                current_state: device.currentState,
+                markov_maturity: device.markovEngine.maturity,
+                total_transitions: device.markovEngine.totalTransitions,
+            }])
+        ),
+        alerts: kernelAlerts,
+        simulatorRunning: kernelSimulatorRunning,
+        tick: kernelSimulatorTick,
+        replayRunning: kernelReplayRunning,
+        replayRunId: kernelReplayRunId,
+        replayFault: kernelReplayRunning && kernelReplayIndex && kernelReplayIndex[kernelReplayRunId] ? kernelReplayIndex[kernelReplayRunId].fault : null,
+        replaySpeed: kernelReplaySpeed,
+        replayProgress: kernelReplayIdx,
+        replayTotal: kernelReplayData ? kernelReplayData.length : 0,
+        mlpLoaded: mlpWeights !== null,  // C2: surface MLP status
+    });
+
+    socket.on('startKernelSimulator', () => {
+        startKernelSimulator();
+    });
+
+    socket.on('stopKernelSimulator', () => {
+        stopKernelSimulator();
+    });
+
+    socket.on('startKernelReplay', async (data) => {
+        try {
+            await loadReplayIndex();
+            const runId = parseInt(data.runId, 10);
+            if (isNaN(runId)) return;  // S2: validate runId
+            const speed = Math.max(1, Math.min(500, parseInt(data.speed, 10) || 1));  // S2: clamp [1, 500]
+            if (!kernelReplayIndex[runId]) return;
+            const rows = await loadReplayRun(runId);
+            kernelReplayData = interpolateToFiveSeconds(rows);
+            startKernelReplay(runId, speed);
+        } catch (err) {
+            console.error('Replay start error:', err.message);
+        }
+    });
+
+    socket.on('stopKernelReplay', () => {
+        stopKernelReplay();
+    });
+
+    socket.on('setKernelReplaySpeed', (data) => {
+        if (!kernelReplayRunning) return;
+        var newSpeed = Math.max(1, Math.min(500, parseInt(data.speed, 10) || 1));  // S2: clamp [1, 500]
+        kernelReplaySpeed = newSpeed;
+        var fault = kernelReplayIndex && kernelReplayIndex[kernelReplayRunId] ? kernelReplayIndex[kernelReplayRunId].fault : 'UNKNOWN';
+        // Restart interval with new speed
+        if (kernelReplayInterval) {
+            clearInterval(kernelReplayInterval);
+            var intervalMs = Math.max(10, Math.round(5000 / newSpeed));
+            // C3 fix: do NOT reinitialize stateBreakdown — reuse module-level kernelReplayStateBreakdown
+
+            kernelReplayInterval = setInterval(function() {
+                if (kernelReplayIdx >= kernelReplayData.length) {
+                    clearInterval(kernelReplayInterval);
+                    kernelReplayInterval = null;
+                    kernelReplayRunning = false;
+                    var totalClassifications = 0;
+                    for (var k in kernelReplayStateBreakdown) totalClassifications += kernelReplayStateBreakdown[k];
+
+                    // S3: compute accuracy metrics
+                    var accuracyMetrics = computeReplayAccuracyMetrics();
+
+                    io.emit('kernelReplayComplete', { runId: kernelReplayRunId, fault: fault, stateBreakdown: kernelReplayStateBreakdown, totalClassifications: totalClassifications, accuracy: accuracyMetrics });
+                    io.emit('kernelReplayStatus', { running: false, runId: kernelReplayRunId, fault: fault, speed: newSpeed, progress: kernelReplayData.length, total: kernelReplayData.length });
+
+                    // Clean up replay device (C1 fix)
+                    delete kernelDevices[REPLAY_DEVICE_ID];
+                    delete kernelHistory[REPLAY_DEVICE_ID];
+                    delete kernelAlerts[REPLAY_DEVICE_ID];
+                    return;
+                }
+
+                var reading = kernelReplayData[kernelReplayIdx];
+                var device = kernelDevices[REPLAY_DEVICE_ID];
+                kernelReplayIdx++;
+
+                device.sensorWindow.push(reading);
+                if (device.sensorWindow.length > 24) device.sensorWindow.shift();
+
+                var classification = null;
+                if (device.sensorWindow.length >= 6) {
+                    classification = classifySensorData(device.sensorWindow);
+                    if (classification) {
+                        kernelReplayStateBreakdown[classification.state_name] = (kernelReplayStateBreakdown[classification.state_name] || 0) + 1;
+
+                        // S3: track confusion matrix and method counts
+                        kernelReplayMethodCounts[classification.method] = (kernelReplayMethodCounts[classification.method] || 0) + 1;
+                        if (reading._ground_truth) {
+                            var gt = reading._ground_truth;
+                            if (!kernelReplayConfusionMatrix[gt]) kernelReplayConfusionMatrix[gt] = {};
+                            kernelReplayConfusionMatrix[gt][classification.state_name] = (kernelReplayConfusionMatrix[gt][classification.state_name] || 0) + 1;
+                        }
+
+                        var prevState = device.currentState;
+                        device.currentState = classification;
+                        if (prevState !== null) {
+                            var timePeriod = getTimePeriod(new Date(reading.timestamp));
+                            var learned = markovLearn(device.markovEngine, prevState.state, classification.state, timePeriod, classification.confidence, classification.sensor_consistency);
+                            if (learned) {
+                                var anomaly = checkMarkovAnomaly(device.markovEngine, prevState.state, classification.state, timePeriod);
+                                if (anomaly) {
+                                    anomaly.device_id = REPLAY_DEVICE_ID;
+                                    anomaly.timestamp = reading.timestamp;
+                                    anomaly.classification = classification;
+                                    if (!kernelAlerts[REPLAY_DEVICE_ID]) kernelAlerts[REPLAY_DEVICE_ID] = [];
+                                    kernelAlerts[REPLAY_DEVICE_ID].push(anomaly);
+                                    if (kernelAlerts[REPLAY_DEVICE_ID].length > KERNEL_MAX_ALERTS) kernelAlerts[REPLAY_DEVICE_ID].shift();
+                                    io.emit('kernelAlert', anomaly);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                kernelHistory[REPLAY_DEVICE_ID] = kernelHistory[REPLAY_DEVICE_ID] || [];
+                kernelHistory[REPLAY_DEVICE_ID].push(Object.assign({}, reading, { classification: classification }));
+                if (kernelHistory[REPLAY_DEVICE_ID].length > KERNEL_MAX_HISTORY) kernelHistory[REPLAY_DEVICE_ID].shift();
+
+                io.emit('kernelStateUpdate', {
+                    device_id: REPLAY_DEVICE_ID, reading: reading, classification: classification,
+                    markov_maturity: device.markovEngine.maturity, total_transitions: device.markovEngine.totalTransitions,
+                    ground_truth: reading._ground_truth,
+                });
+
+                if (kernelReplayIdx % 100 === 0) {
+                    io.emit('kernelReplayStatus', { running: true, runId: kernelReplayRunId, fault: fault, speed: newSpeed, progress: kernelReplayIdx, total: kernelReplayData.length });
+                }
+            }, intervalMs);
+        }
+        io.emit('kernelReplayStatus', { running: true, runId: kernelReplayRunId, fault: fault, speed: newSpeed, progress: kernelReplayIdx, total: kernelReplayData.length });
+    });
+
+    // ── PCBA Kernel Socket Events ──
+    socket.emit('initialPcbaKernelData', {
+        devices: Object.fromEntries(Object.entries(pcbaDevices).map(([id, d]) => [id, {
+            device_id: id, profile: d.profile.name, location_name: d.profile.location_name,
+            lat: d.profile.lat, lon: d.profile.lon,
+            current_state: d.currentState, markov_maturity: d.markovEngine.maturity,
+            total_transitions: d.markovEngine.totalTransitions,
+        }])),
+        alerts: pcbaAlerts,
+        simulatorRunning: pcbaSimulatorRunning,
+        tick: pcbaSimulatorTick,
+        pcbaMlpLoaded: !!pcbaMlpWeights,
+    });
+
+    socket.on('startPcbaSimulator', () => startPcbaSimulator());
+    socket.on('stopPcbaSimulator', () => stopPcbaSimulator());
+
     socket.on('disconnect', () => {
         console.log('📴 Dashboard client disconnected:', socket.id);
     });
+});
+
+// ==================== PCBA KERNEL SIGNAL INTELLIGENCE ====================
+// Parallel path: 14-feature pipeline from temp + vibration (accelerometer) + door
+// Uses real PCBA hardware sensors: DS18B20, MPU6050, MC-38
+
+// PCBA MLP weights loading
+let pcbaMlpWeights = null;
+try {
+    const pcbaWeightsPath = path.join(__dirname, 'kernel', 'pcba_mlp_weights.json');
+    if (fs.existsSync(pcbaWeightsPath)) {
+        pcbaMlpWeights = JSON.parse(fs.readFileSync(pcbaWeightsPath, 'utf8'));
+        console.log('🧠 PCBA Kernel MLP weights loaded successfully');
+    } else {
+        console.log('⚠️ PCBA Kernel MLP weights not found — will use rules-only classification');
+    }
+} catch (e) {
+    console.log('⚠️ Failed to load PCBA Kernel MLP weights:', e.message);
+}
+
+// PCBA in-memory stores (parallel to existing kernel stores)
+const pcbaDevices = {};
+const pcbaHistory = {};
+const pcbaAlerts = {};
+let pcbaSimulatorRunning = false;
+let pcbaSimulatorInterval = null;
+let pcbaSimulatorTick = 0;
+const PCBA_MAX_HISTORY = 200;
+const PCBA_MAX_ALERTS = 50;
+const PCBA_NOISE_THRESHOLD = 0.1;
+
+// ── PCBA Feature Computation ──────────────────────────────────────
+
+function computePcbaFeatures(blockWindow) {
+    if (!blockWindow || blockWindow.length < 2) return null;
+
+    let sensorWindow = blockWindow.slice();
+    sensorWindow = sensorWindow.filter(function(b) {
+        return Number.isFinite(b.temp) && Number.isFinite(b.block_rms) &&
+               Number.isFinite(b.block_dom_freq) && Number.isFinite(b.block_spectral_entropy);
+    });
+    if (sensorWindow.length < 2) return null;
+
+    const temps = sensorWindow.map(b => b.temp);
+    const rmsValues = sensorWindow.map(b => b.block_rms);
+    const domFreqs = sensorWindow.map(b => b.block_dom_freq);
+    const entropies = sensorWindow.map(b => b.block_spectral_entropy);
+
+    const lastBlock = sensorWindow[sensorWindow.length - 1];
+
+    // Temperature domain (4 features)
+    const tempMean = mean(temps);
+    const tempDelta = temps[temps.length - 1] - temps[0];
+    const tempRate = linearRegSlope(temps);
+    const tempVolatility = stddev(temps);
+
+    // Vibration domain (6 features)
+    const vibRms = mean(rmsValues);
+    const vibRmsDelta = rmsValues[rmsValues.length - 1] - rmsValues[0];
+    const vibDomFreq = mean(domFreqs);
+    const freqMean = mean(domFreqs);
+    const freqStd = stddev(domFreqs);
+    const vibSpectralStability = freqMean > 0 ? Math.max(0, Math.min(1, 1 - freqStd / freqMean)) : 0;
+    const vibSpectralEntropy = mean(entropies);
+    const activeBlocks = rmsValues.filter(r => r > PCBA_NOISE_THRESHOLD).length;
+    const vibDutyCycle = rmsValues.length > 0 ? activeBlocks / rmsValues.length : 0;
+
+    // Door domain (2 features) — accelerometer gravity vector derived
+    const doorAngleDeg = Number.isFinite(lastBlock.door_angle_deg) ? lastBlock.door_angle_deg : 0;
+    const doorAngleNorm = Math.max(0, Math.min(1, doorAngleDeg / 180));
+    const doorOpenDuration = lastBlock.door_open_duration_s || 0;
+
+    // Cross-domain (2 features)
+    const epsilon = 0.01;
+    let coolingEfficiencyProxy = 0;
+    if (vibDutyCycle > 0.3 && vibRms > epsilon) {
+        coolingEfficiencyProxy = Math.min(1, Math.abs(tempRate) / (vibRms + epsilon));
+    }
+
+    const tempRates = [];
+    for (let i = 1; i < temps.length; i++) {
+        tempRates.push(temps[i] - temps[i - 1]);
+    }
+    const tempRateVsVib = correlation(tempRates, rmsValues.slice(1));
+
+    return {
+        temp_mean: tempMean,
+        temp_delta: tempDelta,
+        temp_rate: tempRate,
+        temp_volatility: tempVolatility,
+        vib_rms: vibRms,
+        vib_rms_delta: vibRmsDelta,
+        vib_dom_freq: vibDomFreq,
+        vib_spectral_stability: vibSpectralStability,
+        vib_spectral_entropy: vibSpectralEntropy,
+        vib_duty_cycle: vibDutyCycle,
+        door_angle_norm: doorAngleNorm,
+        door_open_duration: doorOpenDuration,
+        cooling_efficiency_proxy: Math.max(0, Math.min(1, coolingEfficiencyProxy)),
+        temp_rate_vs_vib: tempRateVsVib,
+    };
+}
+
+// ── PCBA Rule Classifier ──────────────────────────────────────────
+
+function pcbaRuleClassify(features) {
+    // 1. DOOR_OPEN: accelerometer gravity vector angle > threshold
+    if (features.door_angle_norm > 0.15) {
+        return { state: 1, state_name: 'DOOR_OPEN', confidence: 0.95, method: 'rule' };
+    }
+    // 2. DEFROST: inferred from low duty cycle + temp rising
+    //    No volatility check — defrost has controlled but significant temp rise
+    if (features.vib_duty_cycle < 0.2 && features.temp_rate > 0.05) {
+        return { state: 3, state_name: 'DEFROST', confidence: 0.90, method: 'rule' };
+    }
+    // 3. STABLE: low volatility + small delta + small rate + steady vibration
+    if (features.temp_volatility < 0.4 && Math.abs(features.temp_delta) < 1.0 &&
+        Math.abs(features.temp_rate) < 0.05 && features.vib_spectral_stability > 0.85) {
+        return { state: 0, state_name: 'STABLE', confidence: 0.95, method: 'rule' };
+    }
+    // 4. RECOVERING: negative temp_rate + high vib_rms
+    if (features.temp_rate < -0.05 && features.vib_rms > 0.5) {
+        return { state: 2, state_name: 'RECOVERING', confidence: 0.90, method: 'rule' };
+    }
+    // NO FAULT rule — PCBA has no fault bus
+    return null;
+}
+
+// ── PCBA MLP Classifier ──────────────────────────────────────────
+
+function pcbaMlpClassify(features) {
+    if (!pcbaMlpWeights) return null;
+
+    const featureArray = [
+        features.temp_mean, features.temp_delta, features.temp_rate, features.temp_volatility,
+        features.vib_rms, features.vib_rms_delta, features.vib_dom_freq, features.vib_spectral_stability,
+        features.vib_spectral_entropy, features.vib_duty_cycle,
+        features.door_angle_norm, features.door_open_duration,
+        features.cooling_efficiency_proxy, features.temp_rate_vs_vib,
+    ];
+
+    const probabilities = mlpForward(featureArray, pcbaMlpWeights);
+    if (!probabilities) return null;
+
+    let maxIdx = 0;
+    for (let i = 1; i < probabilities.length; i++) {
+        if (probabilities[i] > probabilities[maxIdx]) maxIdx = i;
+    }
+
+    return {
+        state: maxIdx,
+        state_name: KERNEL_STATES[maxIdx],
+        confidence: probabilities[maxIdx],
+        method: 'mlp',
+        probabilities: probabilities,
+    };
+}
+
+// ── PCBA Sensor Cross-Validation ──────────────────────────────────
+
+function pcbaSensorCrossValidation(state, features) {
+    let score = 1.0;
+    const penalties = [];
+
+    switch (state) {
+        case 0: // STABLE
+            if (features.temp_volatility > 1.0) { score -= 0.3; penalties.push('high_volatility'); }
+            if (Math.abs(features.temp_rate) > 0.1) { score -= 0.2; penalties.push('temp_changing'); }
+            if (features.vib_spectral_stability < 0.7) { score -= 0.3; penalties.push('unstable_vibration'); }
+            break;
+        case 1: // DOOR_OPEN
+            if (features.door_angle_norm < 0.15) { score -= 0.5; penalties.push('door_closed'); }
+            break;
+        case 2: // RECOVERING
+            if (features.temp_rate >= 0) { score -= 0.3; penalties.push('not_cooling'); }
+            if (features.vib_rms < 0.3) { score -= 0.2; penalties.push('low_vibration'); }
+            break;
+        case 3: // DEFROST
+            if (features.vib_duty_cycle > 0.5) { score -= 0.3; penalties.push('compressor_running'); }
+            break;
+        case 4: // DRIFT_WARM
+            if (features.temp_rate <= 0) { score -= 0.3; penalties.push('not_warming'); }
+            if (features.vib_duty_cycle < 0.3) { score -= 0.2; penalties.push('low_duty_cycle'); }
+            break;
+        case 5: // DRIFT_COLD
+            if (features.temp_rate >= 0) { score -= 0.3; penalties.push('not_cooling'); }
+            if (features.vib_duty_cycle < 0.3) { score -= 0.2; penalties.push('low_duty_cycle'); }
+            break;
+        case 6: // EXCURSION
+            if (features.temp_mean < -15) { score -= 0.4; penalties.push('temp_normal'); }
+            break;
+        case 7: // COMP_STRESS
+            if (features.vib_spectral_entropy < 3.0) { score -= 0.3; penalties.push('low_spectral_entropy'); }
+            if (features.vib_spectral_stability > 0.85) { score -= 0.2; penalties.push('vibration_stable'); }
+            break;
+        case 8: // FAULT
+            if (features.vib_rms > 0.3 && features.vib_spectral_stability > 0.8) { score -= 0.3; penalties.push('systems_ok'); }
+            break;
+    }
+
+    return { score: Math.max(0, score), penalties: penalties };
+}
+
+// ── PCBA Full Classification Pipeline ─────────────────────────────
+
+function classifyPcbaSensorData(blockWindow) {
+    const features = computePcbaFeatures(blockWindow);
+    if (!features) return null;
+
+    // Stage 1: Rule-based classification
+    let result = pcbaRuleClassify(features);
+
+    // Stage 2: MLP classification (if rules didn't match)
+    if (!result) {
+        result = pcbaMlpClassify(features);
+    }
+
+    // Stage 3: Heuristic fallback
+    if (!result) {
+        if (features.temp_rate < -0.05 && features.vib_rms > 0.4) {
+            result = { state: 2, state_name: 'RECOVERING', confidence: 0.7, method: 'heuristic' };
+        } else if (features.temp_rate > 0.02 && features.temp_mean > -18) {
+            result = { state: 4, state_name: 'DRIFT_WARM', confidence: 0.6, method: 'heuristic' };
+        } else if (features.temp_rate < -0.02 && features.temp_mean < -22) {
+            result = { state: 5, state_name: 'DRIFT_COLD', confidence: 0.6, method: 'heuristic' };
+        } else if (features.temp_mean > -8) {
+            result = { state: 6, state_name: 'EXCURSION', confidence: 0.7, method: 'heuristic' };
+        } else if (features.vib_spectral_entropy > 3.5 || features.vib_spectral_stability < 0.5) {
+            result = { state: 7, state_name: 'COMP_STRESS', confidence: 0.6, method: 'heuristic' };
+        } else if (features.vib_duty_cycle < 0.2 && features.vib_rms < 0.1) {
+            result = { state: 8, state_name: 'FAULT', confidence: 0.5, method: 'heuristic' };
+        } else {
+            result = { state: 0, state_name: 'STABLE', confidence: 0.5, method: 'heuristic' };
+        }
+    }
+
+    // Stage 4: Sensor cross-validation
+    const crossVal = pcbaSensorCrossValidation(result.state, features);
+
+    return {
+        state: result.state,
+        state_name: result.state_name,
+        confidence: result.confidence,
+        method: result.method,
+        sensor_consistency: crossVal.score,
+        consistency_penalties: crossVal.penalties,
+        feature_snapshot: features,
+        timestamp: new Date().toISOString(),
+    };
+}
+
+// ── PCBA Device Profiles ──────────────────────────────────────────
+
+const PCBA_DEVICE_PROFILES = {
+    PCBA_001: {
+        name: 'Bristol Cold Store',
+        lat: 51.4545, lon: -2.5879,
+        location_name: 'Bristol, UK',
+        profile: 'healthy',
+        doorProb: 0.02, faultProb: 0.0001,
+        targetTemp: -20, baseVibRms: 0.30, baseFreq: 50,
+    },
+    PCBA_002: {
+        name: 'Leeds Distribution',
+        lat: 53.8008, lon: -1.5491,
+        location_name: 'Leeds, UK',
+        profile: 'problematic',
+        doorProb: 0.15, faultProb: 0.002,
+        targetTemp: -18, baseVibRms: 0.35, baseFreq: 52,
+    },
+    PCBA_003: {
+        name: 'Edinburgh Pharma Depot',
+        lat: 55.9533, lon: -3.1883,
+        location_name: 'Edinburgh, UK',
+        profile: 'degrading',
+        doorProb: 0.05, faultProb: 0.001,
+        targetTemp: -20, baseVibRms: 0.32, baseFreq: 51,
+        degradationRate: 0.0005,
+    },
+    PCBA_004: {
+        name: 'Cardiff Seafood Hub',
+        lat: 51.4816, lon: -3.1791,
+        location_name: 'Cardiff, UK',
+        profile: 'healthy',
+        doorProb: 0.03, faultProb: 0.0002,
+        targetTemp: -22, baseVibRms: 0.28, baseFreq: 50,
+    },
+};
+
+// ── PCBA Device Init & Simulation ─────────────────────────────────
+
+function initPcbaDevice(deviceId, profile) {
+    return {
+        deviceId: deviceId,
+        profile: profile,
+        temp: profile.targetTemp + (Math.random() - 0.5) * 2,
+        compressorOn: true,
+        inFault: false,
+        vibRms: profile.baseVibRms,
+        vibDomFreq: profile.baseFreq,
+        vibSpectralEntropy: 2.1,
+        doorAngle: 0,
+        doorTimer: 0,
+        defrostOn: false,
+        defrostTimer: 0,
+        degradation: 0,
+        blockWindow: [],
+        currentState: null,
+        markovEngine: createMarkovEngine(),
+    };
+}
+
+function simulatePcbaTick(device) {
+    const p = device.profile;
+
+    // Degradation
+    if (p.degradationRate) {
+        device.degradation += p.degradationRate;
+    }
+
+    // Door events (accelerometer gravity vector — continuous angle)
+    if (device.doorAngle < 5 && Math.random() < p.doorProb) {
+        device.doorAngle = 70 + Math.random() * 40; // 70-110° open angle
+        device.doorTimer = 10 + Math.random() * 40;
+    }
+    if (device.doorAngle > 5) {
+        device.doorTimer -= 5;
+        if (device.doorTimer <= 0) { device.doorAngle = 1 + Math.random() * 2; device.doorTimer = 0; }
+    }
+
+    // Defrost cycles (triggered by frost buildup proxy — use degradation as proxy)
+    if (!device.defrostOn && device.degradation > 0.1 && Math.random() < 0.005) {
+        device.defrostOn = true;
+        device.defrostTimer = 30 + Math.random() * 30;
+        device.compressorOn = false;
+    }
+    if (device.defrostOn) {
+        device.defrostTimer -= 5;
+        if (device.defrostTimer <= 0) {
+            device.defrostOn = false;
+            if (!device.inFault) {
+                device.compressorOn = true;
+            }
+        }
+    }
+
+    // Temperature physics
+    if (device.doorAngle > 5) device.temp += 0.005 * (22 - device.temp);
+    if (device.compressorOn && !device.defrostOn) {
+        device.temp += 0.003 * (p.targetTemp - device.temp);
+    } else if (device.defrostOn) {
+        device.temp += 0.002 * (22 - device.temp); // Warming during defrost
+    }
+    // Ambient leak
+    device.temp += 0.001 * (22 - device.temp);
+    // Noise
+    device.temp += (Math.random() - 0.5) * 0.1;
+
+    // Fault injection
+    if (!device.inFault && Math.random() < (p.faultProb + device.degradation * 0.01)) {
+        device.inFault = true;
+        device.compressorOn = false;
+    } else if (device.inFault && Math.random() < 0.05) {
+        device.inFault = false;
+        if (!device.defrostOn) {
+            device.compressorOn = true;
+        }
+    }
+
+    // Vibration physics
+    if (device.inFault) {
+        device.vibRms = 0.02 + Math.random() * 0.06;
+        device.vibDomFreq = 10 + Math.random() * 15;
+        device.vibSpectralEntropy = 3.5 + Math.random();
+    } else if (device.compressorOn && !device.defrostOn) {
+        // Normal operation with load-based variation
+        const load = Math.abs(device.temp - p.targetTemp) / 10;
+        device.vibRms = p.baseVibRms + load * 0.1 + (Math.random() - 0.5) * 0.02;
+        device.vibDomFreq = p.baseFreq + load * 5 + (Math.random() - 0.5) * 1;
+        device.vibSpectralEntropy = 2.1 + load * 0.3 + (Math.random() - 0.5) * 0.2;
+
+        // Degradation increases stress
+        if (device.degradation > 0.05) {
+            device.vibRms += device.degradation * 0.5;
+            device.vibDomFreq += device.degradation * 10 + (Math.random() - 0.5) * 3;
+            device.vibSpectralEntropy += device.degradation * 2;
+        }
+    } else if (device.defrostOn) {
+        // Compressor off
+        device.vibRms = 0.02 + Math.random() * 0.03;
+        device.vibDomFreq = 2 + Math.random() * 3;
+        device.vibSpectralEntropy = 3.5 + Math.random() * 0.5;
+    }
+
+    // Clamp vibration
+    device.vibRms = Math.max(0, device.vibRms);
+    device.vibDomFreq = Math.max(0, device.vibDomFreq);
+    device.vibSpectralEntropy = Math.max(0, device.vibSpectralEntropy);
+
+    // Build PCBA block
+    const doorOpen = device.doorAngle > 5;
+    const block = {
+        temp: Math.round(device.temp * 10) / 10,
+        block_rms: Math.round(device.vibRms * 1000) / 1000,
+        block_dom_freq: Math.round(device.vibDomFreq * 10) / 10,
+        block_spectral_entropy: Math.round(device.vibSpectralEntropy * 100) / 100,
+        door_angle_deg: Math.round(device.doorAngle * 10) / 10,
+        door_open_duration_s: doorOpen ? Math.max(0, Math.round((10 + Math.random() * 40 - device.doorTimer))) : 0,
+        timestamp: new Date().toISOString(),
+    };
+
+    // Rolling window (max 24 blocks = 120 seconds at 5s per block)
+    device.blockWindow.push(block);
+    if (device.blockWindow.length > 24) device.blockWindow.shift();
+
+    // Classification (need at least 6 blocks)
+    let classification = null;
+    if (device.blockWindow.length >= 6) {
+        classification = classifyPcbaSensorData(device.blockWindow);
+
+        if (classification) {
+            const prevState = device.currentState;
+            device.currentState = classification;
+
+            // Markov learning
+            if (prevState && prevState.state !== classification.state) {
+                const tp = getTimePeriod(new Date());
+                const learned = markovLearn(device.markovEngine, prevState.state, classification.state, tp, classification.confidence, classification.sensor_consistency);
+                if (learned) {
+                    const anomaly = checkMarkovAnomaly(device.markovEngine, prevState.state, classification.state, tp);
+                    if (anomaly) {
+                        anomaly.device_id = device.deviceId;
+                        anomaly.classification = classification;
+                        anomaly.timestamp = new Date().toISOString();
+                        pcbaAlerts[device.deviceId] = pcbaAlerts[device.deviceId] || [];
+                        pcbaAlerts[device.deviceId].push(anomaly);
+                        if (pcbaAlerts[device.deviceId].length > PCBA_MAX_ALERTS) pcbaAlerts[device.deviceId].shift();
+                        io.emit('pcbaKernelAlert', anomaly);
+                    }
+                }
+            }
+        }
+    }
+
+    return { block: block, classification: classification };
+}
+
+// ── PCBA Simulator Start/Stop ─────────────────────────────────────
+
+function startPcbaSimulator() {
+    if (pcbaSimulatorRunning) return;
+    pcbaSimulatorRunning = true;
+    // Clear stale data from previous run
+    Object.keys(pcbaDevices).forEach(function(k) { delete pcbaDevices[k]; });
+    Object.keys(pcbaHistory).forEach(function(k) { delete pcbaHistory[k]; });
+    Object.keys(pcbaAlerts).forEach(function(k) { delete pcbaAlerts[k]; });
+    pcbaSimulatorTick = 0;
+
+    // Initialize devices
+    Object.keys(PCBA_DEVICE_PROFILES).forEach(deviceId => {
+        const profile = PCBA_DEVICE_PROFILES[deviceId];
+        pcbaDevices[deviceId] = initPcbaDevice(deviceId, profile);
+    });
+
+    console.log('🔬 PCBA Kernel simulator started with', Object.keys(PCBA_DEVICE_PROFILES).length, 'devices');
+
+    pcbaSimulatorInterval = setInterval(() => {
+        pcbaSimulatorTick++;
+
+        Object.keys(pcbaDevices).forEach(deviceId => {
+            const device = pcbaDevices[deviceId];
+            const { block, classification } = simulatePcbaTick(device);
+
+            // Store history
+            pcbaHistory[deviceId] = pcbaHistory[deviceId] || [];
+            pcbaHistory[deviceId].push(Object.assign({}, block, { classification: classification }));
+            if (pcbaHistory[deviceId].length > PCBA_MAX_HISTORY) pcbaHistory[deviceId].shift();
+
+            // Emit state update
+            io.emit('pcbaKernelStateUpdate', {
+                device_id: deviceId,
+                block: block,
+                classification: classification,
+                markov_maturity: device.markovEngine.maturity,
+                total_transitions: device.markovEngine.totalTransitions,
+            });
+        });
+
+        // Emit summary every 12 ticks (60 seconds)
+        if (pcbaSimulatorTick % 12 === 0) {
+            io.emit('pcbaKernelSummary', generatePcbaKernelSummary());
+        }
+    }, 5000);
+
+    io.emit('pcbaKernelSimulatorStatus', { running: true, tick: 0 });
+}
+
+function stopPcbaSimulator() {
+    if (!pcbaSimulatorRunning) return;
+    pcbaSimulatorRunning = false;
+    if (pcbaSimulatorInterval) { clearInterval(pcbaSimulatorInterval); pcbaSimulatorInterval = null; }
+    console.log('🛑 PCBA Kernel simulator stopped at tick', pcbaSimulatorTick);
+    io.emit('pcbaKernelSimulatorStatus', { running: false, tick: pcbaSimulatorTick });
+}
+
+function generatePcbaKernelSummary() {
+    const now = new Date();
+    const devices = Object.values(pcbaDevices).map(d => ({
+        device_id: d.deviceId,
+        profile: d.profile.name,
+        location_name: d.profile.location_name,
+        lat: d.profile.lat,
+        lon: d.profile.lon,
+        current_state: d.currentState ? d.currentState.state_name : 'UNKNOWN',
+        confidence: d.currentState ? d.currentState.confidence : 0,
+        method: d.currentState ? d.currentState.method : 'none',
+        sensor_consistency: d.currentState ? d.currentState.sensor_consistency : 0,
+        markov_maturity: d.markovEngine.maturity,
+        total_transitions: d.markovEngine.totalTransitions,
+        temp: d.temp,
+        vib_rms: d.vibRms,
+        vib_dom_freq: d.vibDomFreq,
+    }));
+
+    const stateCounts = {};
+    KERNEL_STATES.forEach(s => { stateCounts[s] = 0; });
+    devices.forEach(d => { if (d.current_state in stateCounts) stateCounts[d.current_state]++; });
+
+    const recentAlerts = [];
+    Object.values(pcbaAlerts).forEach(alerts => {
+        alerts.forEach(a => {
+            if (now - new Date(a.timestamp) < 120000) recentAlerts.push(a);
+        });
+    });
+
+    return {
+        device_count: devices.length,
+        devices: devices,
+        state_distribution: stateCounts,
+        active_alerts: recentAlerts.length,
+        alerts: recentAlerts.slice(-10),
+        simulator_running: pcbaSimulatorRunning,
+        tick: pcbaSimulatorTick,
+        timestamp: now.toISOString(),
+    };
+}
+
+// ── PCBA API Endpoints ────────────────────────────────────────────
+
+app.get('/api/kernel-pcba/status', (req, res) => {
+    res.json(generatePcbaKernelSummary());
+});
+
+app.get('/api/kernel-pcba/device/:id/history', (req, res) => {
+    const id = req.params.id;
+    const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit) || 100));
+    const history = (pcbaHistory[id] || []).slice(-limit);
+    res.json({ device_id: id, history: history, count: history.length });
+});
+
+app.get('/api/kernel-pcba/device/:id/markov', (req, res) => {
+    const id = req.params.id;
+    const device = pcbaDevices[id];
+    if (!device) return res.status(404).json({ error: 'Device not found' });
+    res.json({ device_id: id, markov: getMarkovData(device.markovEngine) });
+});
+
+app.get('/api/kernel-pcba/device/:id/alerts', (req, res) => {
+    const id = req.params.id;
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+    const alerts = (pcbaAlerts[id] || []).slice(-limit);
+    res.json({ device_id: id, alerts: alerts, count: alerts.length });
+});
+
+app.post('/api/kernel-pcba/data', (req, res) => {
+    const data = req.body;
+    if (!data || !data.device_id) return res.status(400).json({ error: 'device_id required' });
+
+    const deviceId = data.device_id;
+    if (typeof deviceId !== 'string' || deviceId.length < 1 || deviceId.length > 50 || !/^[A-Za-z0-9_-]+$/.test(deviceId)) {
+        return res.status(400).json({ error: 'invalid device_id format' });
+    }
+
+    const numericFields = ['temp', 'block_rms', 'block_dom_freq', 'block_spectral_entropy'];
+    for (let i = 0; i < numericFields.length; i++) {
+        const field = numericFields[i];
+        if (!Number.isFinite(data[field])) {
+            return res.status(400).json({ error: field + ' must be a finite number' });
+        }
+    }
+    if (data.block_rms < 0 || data.block_dom_freq < 0 || data.block_spectral_entropy < 0) {
+        return res.status(400).json({ error: 'vibration metrics must be non-negative' });
+    }
+    const doorAngleDeg = Number.isFinite(data.door_angle_deg) ? data.door_angle_deg : 0;
+    if (doorAngleDeg < 0 || doorAngleDeg > 180) {
+        return res.status(400).json({ error: 'door_angle_deg must be between 0 and 180' });
+    }
+    const doorOpenDuration = Number.isFinite(data.door_open_duration_s) ? data.door_open_duration_s : 0;
+    if (doorOpenDuration < 0) {
+        return res.status(400).json({ error: 'door_open_duration_s must be non-negative' });
+    }
+
+    const isNewDevice = !pcbaDevices[deviceId];
+    if (isNewDevice && Object.keys(pcbaDevices).length >= 100) {
+        return res.status(429).json({ error: 'device limit reached' });
+    }
+
+    // Auto-create device if not exists
+    if (!pcbaDevices[deviceId]) {
+        pcbaDevices[deviceId] = initPcbaDevice(deviceId, {
+            name: deviceId,
+            lat: data.lat || 0, lon: data.lon || 0,
+            location_name: data.location_name || 'Unknown',
+            profile: 'external',
+            doorProb: 0, faultProb: 0,
+            targetTemp: -20, baseVibRms: 0.30, baseFreq: 50,
+        });
+    }
+
+    const device = pcbaDevices[deviceId];
+    const block = {
+        temp: data.temp,
+        block_rms: data.block_rms,
+        block_dom_freq: data.block_dom_freq,
+        block_spectral_entropy: data.block_spectral_entropy,
+        door_angle_deg: doorAngleDeg,
+        door_open_duration_s: doorOpenDuration,
+        timestamp: data.timestamp || new Date().toISOString(),
+    };
+
+    device.blockWindow.push(block);
+    if (device.blockWindow.length > 24) device.blockWindow.shift();
+
+    let classification = null;
+    if (device.blockWindow.length >= 6) {
+        classification = classifyPcbaSensorData(device.blockWindow);
+        if (classification) device.currentState = classification;
+    }
+
+    pcbaHistory[deviceId] = pcbaHistory[deviceId] || [];
+    pcbaHistory[deviceId].push(Object.assign({}, block, { classification: classification }));
+    if (pcbaHistory[deviceId].length > PCBA_MAX_HISTORY) pcbaHistory[deviceId].shift();
+
+    io.emit('pcbaKernelStateUpdate', {
+        device_id: deviceId, block: block, classification: classification,
+        markov_maturity: device.markovEngine.maturity,
+        total_transitions: device.markovEngine.totalTransitions,
+    });
+
+    res.json({ status: 'ok', device_id: deviceId, classification: classification });
+});
+
+app.post('/api/kernel-pcba/simulator/start', (req, res) => {
+    startPcbaSimulator();
+    res.json({ status: 'started', devices: Object.keys(PCBA_DEVICE_PROFILES) });
+});
+
+app.post('/api/kernel-pcba/simulator/stop', (req, res) => {
+    stopPcbaSimulator();
+    res.json({ status: 'stopped', tick: pcbaSimulatorTick });
 });
 
 // ==================== START SERVER ====================
@@ -5445,6 +7614,8 @@ httpServer.listen(PORT, '0.0.0.0', async () => {
     console.log(`👉 Subzero Fleet: http://localhost:4001/freezer`);
     console.log(`👉 Home Freezers: http://localhost:4001/home-freezer (tabbed view for both freezers)`);
     console.log(`👉 Body Tracker: http://localhost:4001/body-tracker`);
+    console.log(`👉 Kernel Intelligence: http://localhost:4001/kernel`);
+    console.log(`👉 PCBA Kernel: http://localhost:4001/kernel (PCBA tab)`);
 
     // Load historical fleet data from Supabase
     await loadFleetDataFromSupabase();

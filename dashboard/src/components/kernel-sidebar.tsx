@@ -5,14 +5,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
-  ClipboardList,
-  FileBarChart,
-  AlertOctagon,
-  Wrench,
-  Calendar,
-  Users,
-  Bell,
-  BookOpen,
+  Brain,
+  AlertTriangle,
+  BarChart3,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -21,7 +16,7 @@ import {
   Cpu,
   LayoutGrid,
   Heart,
-  Brain,
+  Snowflake,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -32,7 +27,6 @@ interface NavItem {
   href: string;
   icon: React.ElementType;
   badge?: number;
-  disabled?: boolean;
 }
 
 const switchDashboards: NavItem[] = [
@@ -41,70 +35,24 @@ const switchDashboards: NavItem[] = [
   { title: "Car", href: "/car", icon: Car },
   { title: "Home Freezers", href: "/home-freezer", icon: Home },
   { title: "Body Tracker", href: "/body-tracker", icon: Heart },
-  { title: "Kernel Intelligence", href: "/kernel", icon: Brain },
+  { title: "Fleet Monitor", href: "/freezer", icon: Snowflake },
 ];
 
 const navItems: NavItem[] = [
-  {
-    title: "Asset Overview",
-    href: "/freezer",
-    icon: LayoutDashboard,
-  },
-  {
-    title: "Action Points",
-    href: "/freezer/actions",
-    icon: ClipboardList,
-    badge: 3,
-  },
-  {
-    title: "Reporting Suite",
-    href: "/freezer/reports",
-    icon: FileBarChart,
-  },
-  {
-    title: "Escalations",
-    href: "/freezer/escalations",
-    icon: AlertOctagon,
-    badge: 2,
-  },
-  {
-    title: "Maintenance",
-    href: "/freezer/maintenance",
-    icon: Wrench,
-  },
-  {
-    title: "Schedules",
-    href: "/freezer/schedules",
-    icon: Calendar,
-  },
-  {
-    title: "Team",
-    href: "/freezer/team",
-    icon: Users,
-  },
-  {
-    title: "Notifications",
-    href: "/freezer/notifications",
-    icon: Bell,
-  },
-  {
-    title: "Documentation",
-    href: "/freezer/docs",
-    icon: BookOpen,
-  },
-  {
-    title: "Settings",
-    href: "/freezer/settings",
-    icon: Settings,
-  },
+  { title: "Signal Intelligence", href: "/kernel", icon: LayoutDashboard },
+  { title: "PCBA Devices", href: "/kernel-pcba", icon: Cpu },
+  { title: "Markov Engine", href: "/kernel", icon: Brain },
+  { title: "Alerts", href: "/kernel", icon: AlertTriangle },
+  { title: "Analytics", href: "/kernel", icon: BarChart3 },
+  { title: "Settings", href: "/kernel", icon: Settings },
 ];
 
-interface FreezerSidebarProps {
+interface KernelSidebarProps {
   collapsed?: boolean;
   onToggleCollapse?: () => void;
 }
 
-export function FreezerSidebar({ collapsed = false, onToggleCollapse }: FreezerSidebarProps) {
+export function KernelSidebar({ collapsed = false, onToggleCollapse }: KernelSidebarProps) {
   const pathname = usePathname();
 
   return (
@@ -114,20 +62,18 @@ export function FreezerSidebar({ collapsed = false, onToggleCollapse }: FreezerS
         collapsed ? "w-16" : "w-56"
       )}
     >
-      {/* Logo Section */}
       <div className="p-4 border-b border-slate-700">
         <div className="flex items-center gap-3">
           <FluxLogo size="md" />
           {!collapsed && (
             <div className="overflow-hidden">
-              <h1 className="font-bold text-white text-lg leading-tight">Flux</h1>
-              <p className="text-xs text-slate-400">IoT Platform</p>
+              <h1 className="font-bold text-white text-lg leading-tight">Kernel</h1>
+              <p className="text-xs text-slate-400">Signal Intelligence</p>
             </div>
           )}
         </div>
       </div>
 
-      {/* Switch Dashboard */}
       <div className="p-2 border-b border-slate-700">
         {!collapsed && (
           <p className="px-3 py-1 text-xs font-medium text-slate-500 uppercase">Switch Dashboard</p>
@@ -153,53 +99,29 @@ export function FreezerSidebar({ collapsed = false, onToggleCollapse }: FreezerS
         </div>
       </div>
 
-      {/* Navigation */}
       <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
         {navItems.map((item) => {
           const isActive = pathname === item.href;
           const Icon = item.icon;
-
           return (
             <Link
-              key={item.href}
-              href={item.disabled ? "#" : item.href}
+              key={item.title}
+              href={item.href}
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 text-sm transition-colors",
                 isActive
-                  ? "bg-cyan-500/20 text-cyan-400 border-l-2 border-cyan-400"
-                  : "text-slate-400 hover:bg-slate-800 hover:text-white border-l-2 border-transparent",
-                item.disabled && "opacity-50 cursor-not-allowed",
-                collapsed && "justify-center px-2"
+                  ? "bg-violet-500/20 text-violet-400 border-l-2 border-violet-400"
+                  : "text-slate-400 hover:bg-slate-800 hover:text-white border-l-2 border-transparent"
               )}
               title={collapsed ? item.title : undefined}
             >
               <Icon className="h-4 w-4 flex-shrink-0" />
-              {!collapsed && (
-                <>
-                  <span className="flex-1">{item.title}</span>
-                  {item.badge && (
-                    <span
-                      className={cn(
-                        "px-2 py-0.5 text-xs font-medium",
-                        isActive
-                          ? "bg-cyan-500/30 text-cyan-300"
-                          : "bg-slate-700 text-slate-300"
-                      )}
-                    >
-                      {item.badge}
-                    </span>
-                  )}
-                </>
-              )}
-              {collapsed && item.badge && (
-                <span className="absolute top-1 right-1 w-2 h-2 bg-cyan-400 rounded-full" />
-              )}
+              {!collapsed && <span className="flex-1">{item.title}</span>}
             </Link>
           );
         })}
       </nav>
 
-      {/* Footer with Collapse Button */}
       <div className="p-2 border-t border-slate-700">
         <Button
           variant="ghost"

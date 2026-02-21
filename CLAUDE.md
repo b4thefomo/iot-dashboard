@@ -238,3 +238,21 @@ NEXT_PUBLIC_MAPBOX_TOKEN=xxx
   ├── freezer-sidebar.tsx               # Navigation sidebar
   └── fleet-header.tsx                  # Page header
 ```
+
+## Calling Other Agents
+
+Other AI agents can be invoked via CLI for **code review and consultation only**. They must NOT do the actual implementation — that is Claude Code's job. Always explicitly instruct the other agents that they are only providing opinions and reviews.
+
+### Claude Code (Anthropic)
+```bash
+claude -p "Your prompt here"
+```
+- `-p` / `--print`: Non-interactive mode. Prints response to stdout and exits.
+
+### Codex (OpenAI)
+```bash
+./scripts/call-codex.sh "Your prompt here"
+```
+- Uses the wrapper script at `scripts/call-codex.sh` which displays Codex output in **cyan** for visual distinction.
+- Under the hood runs `codex exec` non-interactively.
+- `--dangerously-bypass-approvals-and-sandbox`: Skip confirmation prompts (necessary for non-interactive CLI chaining).

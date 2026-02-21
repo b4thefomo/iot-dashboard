@@ -1,0 +1,421 @@
+﻿Flux IoT Sales Playbook
+
+
+FLUX IoT
+SALES PLAYBOOK
+The Authority-Led Approach to Cold Chain Sales
+Confidential
+________________
+
+
+Contents
+1. Core Philosophy: Authority Over Vendor
+2. The Psychology of Cold Chain Sales
+3. Target Customer Profiles
+4. The Value Stack: Making Price Irrelevant
+5. The Compliance Gap Analysis Framework
+6. Sales Call Structure: Audit First, Sell Second
+7. Objection Handling Scripts
+8. Pricing and Packaging
+9. Follow-Up Sequences
+10. Key Metrics and Qualification
+________________
+
+
+1. Core Philosophy: Authority Over Vendor
+Flux IoT does not sell temperature monitoring hardware. We are compliance partners who happen to use technology to deliver outcomes. This distinction changes everything about how we approach sales.
+
+
+The Fundamental Shift
+We are not asking: "Can I show you our temperature monitoring system?" We are asking: "Would a compliance gap analysis help you understand where you stand against current regulations?"
+	
+
+Why Authority Positioning Works
+* Expertise cannot be commoditised. Hardware can.
+* Prospects defer to experts, not vendors.
+* The product becomes the implementation of your expertise, not the thing you sell.
+* You qualify prospects by their willingness to engage with your expertise.
+
+
+What We Actually Sell
+Peace of mind. Audit-readiness. The confidence that comes from knowing your compliance is bulletproof. The hardware is simply the delivery mechanism for that outcome.
+________________
+
+
+2. The Psychology of Cold Chain Sales
+Understanding the psychological principles that drive purchasing decisions allows us to structure conversations and offers that feel natural, valuable, and low-risk to prospects.
+
+
+Loss Aversion (Kahneman)
+People feel losses approximately twice as intensely as equivalent gains. A single temperature excursion can cost:
+* Pharmaceutical: £10K-£500K in destroyed vaccines/medication
+* Food service: £5K-£50K in spoilage plus potential closure from inspection failure
+* Career impact: Compliance failures can end careers
+
+
+Frame your pitch around what they stand to lose without proper monitoring, not what they gain with it. "Protect £200K of inventory" hits harder than "Monitor your freezers."
+	
+
+Authority (Cialdini)
+People defer to experts. If you know the regulations better than the prospect does, you are not a salesperson. You are a consultant they need. Demonstrate expertise before pitching product.
+
+
+Reciprocity (Cialdini)
+Give genuine value before asking for anything. Your compliance checklists, gap analyses, and regulatory guides are sales tools, not just content. When you hop on a call, you should already have sent them something useful.
+
+
+Commitment and Consistency (Cialdini)
+Start with small yeses that create momentum:
+1. "Would it be helpful if I sent you the HACCP checklist for your sector?"
+2. "Would a 15-minute call to walk through it be useful?"
+3. "Would you like to see how this looks automated?"
+
+
+Fear of Unknown Gaps
+Compliance is anxiety-inducing precisely because people do not know what they do not know. "You might be exposed and not realise it" is a powerful motivator. An external audit gives them permission to address problems without having to confess they existed.
+________________
+
+
+3. Target Customer Profiles
+Focus initial efforts on multi-site operators with 3-10 locations. They are big enough to have real pain (manual logging across sites is chaos), small enough to make decisions quickly (no 6-month procurement cycles), and likely to expand (you grow with them).
+
+
+Priority Segments
+
+
+Segment
+	Primary Pain Point
+	Key Regulations
+	Regional Pharmacy Chains
+	Vaccine storage, MHRA audits
+	GDP, MHRA guidelines
+	Restaurant Groups
+	FSA inspections, multi-site chaos
+	HACCP, FSA Food Hygiene
+	Care Home Operators
+	Medication storage, CQC compliance
+	CQC, NICE guidelines
+	Veterinary Clinic Chains
+	Vaccine storage, limited staff
+	VMD regulations
+	Food Distribution
+	Customer audit requirements
+	BRC, HACCP, customer SLAs
+	________________
+
+
+4. The Value Stack: Making Price Irrelevant
+The goal is to stack value until the price becomes irrelevant. Competitors sell hardware and software. We sell the outcome: You will pass every inspection, never lose product to temperature failure, and have bulletproof documentation.
+
+
+Stack Layer 1: Core Monitoring System
+* IoT sensors with real-time monitoring dashboard
+* SMS and email alerts with escalation logic
+* AI-generated monthly compliance reports
+* Historical data and trend analysis
+Perceived Value: £3,000-5,000/year
+
+
+Stack Layer 2: Done-For-You Implementation
+* Site survey to map all critical control points
+* Custom sensor placement plan optimised for their layout
+* Installation guidance or coordination with maintenance team
+* System configuration tuned to specific thresholds
+Perceived Value: £500-1,000
+
+
+Stack Layer 3: Compliance Confidence Package
+* Personalised compliance gap analysis
+* Sector-specific regulatory handbook
+* Quarterly regulatory update briefings
+* Pre-inspection readiness checklist
+* Mock inspection review before real audits
+Perceived Value: £1,500-2,500/year
+
+
+Stack Layer 4: Sleep at Night Guarantee
+* 24/7 critical alert escalation with direct calls if unacknowledged
+* Incident response protocol pushed to phone when alerts fire
+* Post-incident report generation with full timeline
+* Black box data preservation for disputes or recalls
+Perceived Value: £1,000-2,000/year
+
+
+Stack Layer 5: Staff Training and Certification
+* Online training module: Temperature Compliance Fundamentals
+* Completion certificate for each staff member
+* Role-specific quick reference cards
+* Annual refresher training with updated content
+Perceived Value: £500-1,000/year
+
+
+Stack Layer 6: The Inspection Pass Guarantee
+If they fail any temperature-related finding on their next regulatory inspection while using the system correctly, we continue service at no charge until they pass. This eliminates the "what if it doesn't work" objection entirely.
+Perceived Value: Priceless (risk reversal)
+
+
+Stack Layer 7: Strategic Bonuses
+Insurance Liaison: Introduction to insurers offering premium discounts for continuous monitoring. Many offer 10-20% reductions.
+Energy Efficiency Reports: Quarterly analysis of compressor performance and recommendations that cut energy costs.
+Compliance Documentation Vault: 7-year searchable archive of all compliance records with instant retrieval.
+
+
+The Complete Value Stack
+Component
+	Perceived Value
+	Core monitoring system
+	£3,000
+	Done-for-you implementation
+	£750
+	Compliance confidence package
+	£2,000
+	24/7 escalation and incident response
+	£1,500
+	Staff training and certification
+	£750
+	Inspection pass guarantee
+	Risk elimination
+	Insurance and energy bonuses
+	£500+ savings
+	TOTAL PERCEIVED VALUE
+	£9,500+/year
+	YOUR PRICE
+	£3,500-4,500/year
+	________________
+
+
+5. The Compliance Gap Analysis Framework
+The gap analysis is your primary sales tool. It demonstrates expertise, surfaces pain, creates reciprocity, and qualifies prospects simultaneously.
+
+
+The Offer
+We help [sector] operators understand where they stand against current regulatory requirements. We do a 30-minute compliance review at no cost. You will get a written report of any gaps we identify, whether you work with us or not.
+	
+
+Audit Checklist Categories
+
+
+Temperature Monitoring
+* Are all critical control points monitored?
+* What is the monitoring frequency?
+* Is there continuous logging or spot checks?
+* What is the alert escalation procedure?
+
+
+Documentation and Records
+* How long are records retained?
+* Are they digital or paper?
+* Could you produce them within 24 hours if inspected?
+* Are calibration records maintained?
+
+
+Response Procedures
+* What happens when a threshold is breached?
+* Who is notified and how quickly?
+* Is there a documented corrective action process?
+* Can you prove the timeline of your response?
+
+
+Equipment and Calibration
+* When were sensors last calibrated?
+* Is there a calibration schedule?
+* Are backup monitoring systems in place?
+
+
+Findings Presentation: RAG Status
+Present findings in three categories:
+* GREEN - Compliant: "You are solid here."
+* AMBER - At Risk: "This would likely be flagged in an inspection."
+* RED - Non-Compliant: "This is a gap that needs addressing."
+
+
+The Power of Amber
+Red items they probably know about. Green items build trust. Amber items are where you demonstrate expertise - things they thought were fine but actually are not.
+	
+
+Compliance Readiness Score
+Create a simple 0-100 metric that summarises their findings. People love scores. It makes the abstract concrete.
+"You are currently at 62. Our clients typically reach 90+ within three months of implementation."
+	________________
+
+
+6. Sales Call Structure: Audit First, Sell Second
+
+
+Pre-Call Preparation
+4. Research their compliance environment. Are they NHS-adjacent? FSA regulated? Know their specific pain.
+5. Send something valuable first: "I put together a quick checklist of what inspectors look for in [their sector]. Thought it might be useful regardless of whether we work together."
+6. Prepare a loss calculation. Have rough numbers ready for what a single incident costs in their industry.
+
+
+The Audit Call (30-45 minutes)
+
+
+Minutes 1-5: Context
+"Tell me about your operation - how many sites, what are you storing, who is your regulator?"
+	
+
+Minutes 5-25: The Audit Questions
+Work through your checklist. Take notes visibly (screen share if virtual). Ask follow-up questions that reveal gaps:
+* "And what happens if that person is on holiday?"
+* "Walk me through what happens when you get a temperature alert at 2am."
+* "When was your last inspection? How did prep for that go?"
+* "Have you ever had a near-miss with spoilage?"
+
+
+Listen for emotional language. "It is a nightmare" or "I worry about..." are buying signals.
+
+
+Minutes 25-35: Initial Findings
+"Based on what you have told me, there are a couple of areas I would want to look at more closely..."
+	Do not solve everything on the call. Create anticipation for the written report.
+
+
+Minutes 35-45: Next Steps
+Offer to send a written gap analysis within 48 hours. Include:
+* Summary of findings (RAG status)
+* Specific regulatory references for each gap
+* Recommended actions (some you solve, some they could do themselves)
+* Offer to discuss implementation
+________________
+
+
+7. Objection Handling Scripts
+
+
+"We just do manual logging every day"
+This is the most common objection. Authority alone will not crack it. You need to reframe what compliance actually means.
+
+
+Approach 1: The 3am Question
+"That makes sense. Can I ask, what time do you do your checks?" [They answer 8am, 12pm, 5pm or similar] "So your log shows those three readings. If an inspector asks what the temperature was at 3am last Tuesday, what would you show them?"
+	Pause. Let them sit with it.
+"With manual logging, you can prove those three moments. But you cannot prove the 21 hours in between. Continuous monitoring means you can demonstrate compliance for every minute, not just the moments someone happened to check."
+	
+
+Approach 2: Incident Reconstruction
+"Let me ask you a scenario question. You come in Monday morning, the freezer is reading -2°C instead of -18°C. Something failed over the weekend. With your current setup, can you tell me: When exactly did it fail? Was it Saturday night or Sunday afternoon? How long was the product actually out of range?"
+	They cannot answer this with manual logs.
+"That matters because it determines whether you have lost everything or just need to discard a portion. It also matters if there is ever a product recall or a liability question - you need to prove exactly what happened and when."
+	
+
+Approach 3: The Inspector Perspective
+"I have looked at a lot of inspection reports and audit findings. One thing that has changed in recent years is that inspectors are increasingly asking for continuous temperature records, not just spot checks. The question they are really asking is: can you demonstrate that this product was stored correctly for its entire time in your facility? A manual log shows intent. Continuous monitoring shows proof."
+	
+
+Approach 4: The Human Factor
+"Who does the logging currently?" [They name someone] "What happens when they are sick? On holiday? Running late? Forget? I am not saying your people are not reliable - but manual processes depend on humans being perfect every single day. And if there is ever a gap in your log, that is the first thing an inspector notices."
+	
+
+"It is too expensive"
+Reframe against the cost of failure and labour savings.
+"How long does manual logging take each day, across all your units?" [Do the maths with them. 15 minutes three times daily is 45 minutes. At £12/hour, that is £9/day, £270/month in labour alone.] "The monitoring pays for itself in labour savings. The compliance improvement and risk reduction is essentially free."
+	
+
+"We have never had a problem"
+"That is great - genuinely. But let me ask: do you know that because you have data proving it, or because nothing has been flagged yet? There is a difference between no problems and no detected problems. Continuous monitoring gives you the evidence to prove your track record."
+	
+
+"I need to think about it"
+"Absolutely. What specifically would you want to think through? Is it budget, timing, or something about the solution itself?"
+	This surfaces the real objection. Then offer a low-commitment next step:
+"Would it make sense to run a 30-day pilot on two of your units? No commitment beyond that. You will see real data, real reports, and can decide if it is worth rolling out."
+	________________
+
+
+8. Pricing and Packaging
+
+
+Three-Tier Structure
+Lead with Tier 2 (Professional). Tier 1 exists partly to make Tier 2 look like obviously better value. Tier 3 anchors high.
+
+
+
+
+	Starter
+	Professional
+	Enterprise
+	Price
+	£99-149/mo
+	£299-449/mo
+	£1,000+/mo
+	Sensors
+	3-5
+	Up to 20
+	Unlimited
+	Dashboard
+	Basic
+	Full
+	Full + API
+	AI Reports
+	Monthly PDF
+	Full suite
+	Custom + white-label
+	Support
+	Email
+	Quarterly reviews
+	Dedicated AM
+	
+
+Founding Partner Programme
+For early customers, offer genuine scarcity:
+"We are onboarding five pilot customers this quarter at founding partner pricing - that locks in 40% off for the first two years and you get direct input into the product roadmap."
+	This is true (you do want early customers), valuable (they genuinely get a better deal), and urgent (limited spots).
+________________
+
+
+9. Follow-Up Sequences
+
+
+Post-Audit Sequence
+Day 1: Send written gap analysis with findings and recommendations.
+Day 3: Follow-up email: "Had a chance to review the report? Happy to walk through any questions."
+Day 7: Value-add email with relevant content: "Thought you might find this useful - FSA just updated their guidance on [relevant topic]."
+Day 14: Direct ask: "Based on our assessment, would it make sense to discuss a pilot?"
+Day 30: Check-in: "Just wanted to see if circumstances have changed. The gaps we identified are still there."
+
+
+Post-Pilot Sequence
+Week 1: Setup call to ensure everything is working.
+Week 2: First insights email with early data observations.
+Week 3: Check-in on any questions or issues.
+Week 4: Results review call. Present findings and make rollout recommendation.
+
+
+Lost Deal Re-Engagement
+Month 3: "Just checking in. How has compliance been going?"
+Month 6: "It has been six months since we did your assessment. Regulations have changed. Want an updated score?"
+After industry news: "Saw the recent FSA enforcement action in [their sector]. Thought of our conversation. Worth revisiting?"
+________________
+
+
+10. Key Metrics and Qualification
+
+
+BANT Qualification
+* Budget: Can they afford £3,000-5,000/year? (Frame as £10/day or less than one spoilage incident)
+* Authority: Are you speaking to the decision-maker? If not, how do we get there?
+* Need: Did the audit reveal genuine compliance gaps?
+* Timeline: Is there a triggering event (upcoming inspection, recent incident, new regulation)?
+
+
+Disqualification Signals
+* Single location with low-value inventory (likely not worth the sales effort)
+* No regulatory oversight or customer audit requirements
+* "We have never had a problem" combined with resistance to audit
+* Price-only focus with no interest in compliance outcomes
+
+
+Pipeline Metrics to Track
+* Audits scheduled per week (target: 5+)
+* Audit to pilot conversion rate (target: 30%+)
+* Pilot to paid conversion rate (target: 60%+)
+* Average deal size
+* Sales cycle length (target: under 45 days)
+
+
+Remember
+You are not selling temperature monitoring. You are selling the peace of mind that comes from knowing compliance is bulletproof. Lead with expertise, demonstrate value through the audit, and let the product be the obvious solution to problems you have helped them see clearly.
+	
+
+Page
